@@ -1,0 +1,228 @@
+May 28, 2009
+
+Dave's explanation of his walk algorithm
+----------------------------------------
+
+The data structure that mK uses internally to represent mapping of
+logic variables is called a _substitution_.  It's most easily
+implemented as an alist, for instance,
+
+S = ((x . y) (z . 1) (q . r))
+
+In the simplest implementation of substitutions, you could just call
+Scheme's assq primitive.  This is called _walking a variable in a
+substitution_.
+
+So, the simplest possible version of walk looks like this:
+
+(define walk
+  (lambda (u s)
+    (cond
+      [(assq u s) => (lambda (p)
+                       (walk (cdr p) s))]
+      [(else u)])))
+
+This is assuming that we're using a _triangular_ substitution, in
+which we're allowed to have things on the RHS of a binding that also
+appear on the LHS of some binding.  The advantage of triangular
+substitutions is that you can extend the substitution quickly and
+easily, but at the cost of walk being expensive.  This walk algorithm
+has n^2 complexity for a substitution of length n, because we
+potentially have to walk the list once for each of the n bindings.
+
+Contrast this with an _idempotent_ substitution, in which we're *not*
+allowed to have things on the RHS of a binding that also appear on the
+LHS of some binding.  That means that you don't have to recursively
+walk the values that you look up -- whatever you look up first is the
+answer!  But now, extending the substitution is hard.  
+
+Mathematicians generally talk about idempotent substitutions because
+they're easier to reason about mathematically.
+
+In a triangular subsitution, one way to save us from looking through
+the whole substitution when we're doing the walk is with something
+called _birth records_, which, as far as we know, Oleg invented.  A
+birth record is a pair (w . w) that we add to the substitution at the
+time the logic variable w is created.  Once the birth record is there,
+we know we never have to walk the part of the substitution to the
+right of the birth record when walking w.  (We know that everything to
+the right is "stale".)
+
+Later, we realized that instead of adding this (w . w) pair, we could
+simply look for the first occurrence of a pair that has w on its rhs.
+I need to ask Dave about this, though.  We call it the _rhs test_.
+
+...stuff about rhs test -- ask Dave about this...
+
+In current miniKanren, actually, instead of using birth records per
+se, we do it like this: we store each variable as a one-element vector
+which contains a pointer to the substitution at the time of the
+variable's creation.  At first, this seems a little strange, because
+why would we store only the stale part of the substitution?  But we
+end up using it as follows: as we're doing a lookup later on (on a
+possibly extended substitution), we compare each cdr of the list with
+the stored substitution using eq? (which works because they are, in
+fact, the same location).  And if we hit the "stale" chunk of the
+substitution, we know we can stop.  It's not particuarly expensive to
+store this pointer, and it works out well.
+
+So, with triangular substitution under the current implementation, we
+have constant-time extensions, but lookup remains expensive.  We'd
+like to have constant-time extensions *and* something like linear
+lookup.  So we're starting to look at alternative data structures for
+substitutions.
+
+...stuff about tries -- ask Dave about this...
+
+--- June 3, 2009 section ---
+
+We also have another idea for an alternative data structure for
+substitutions.  It is inspired by "skew binary" representations of
+numbers, as shown in Chris Okasaki's book "Purely Functional Data
+Structures".  Let's talk first about ways to represent numbers, and
+what skew binary representation is.
+
+With "normal" little-endian binary numbers, we'd write 11 like this:
+1101.  We could also do what's called a "sparse polynomial"
+representation of the same number, which looks like this:
+
+(1 * 2^0, 1 * 2^1, 1 * 2^3), or (1, 2, 8)
+
+We could also represent this as an alist, where each populated bit is
+associated with a 1, saying "hey, this is populated":
+
+((1 . x) (2. x) (8 . x))
+
+(Now, the associated rhs x's don't give us any more information; if
+they're there at all, they'll be x, so we could just as well have had
+a list of (1 2 8).  But suppose that we replace each rhs x with a
+*tree* of data, which is the size of the associated weight.)
+
+Now, with regular binary representation, the weight of bit w_i is
+2^i.  But in skew binary representation, the weight of bit w_i is
+2^i+1 - 1.  You end up having 0, 1, or 2 in each "bit".
+
+Our point, in discussing all of this, is that Okasaki shows that with
+SB representation, we can increment numbers in constant time (instead
+of logarithmic in the size of the number (or linear in the number of
+bits, which is what's necessary with normal binary representation,
+because of carrying)).
+
+Once again: with normal binary numbers, it takes logarithmic time in
+the worst case to do an increment, because there are a logarithmic
+number of bits in the size of the number we're representing, and we
+might have to carry all of them.  But, according to Okasaki, we can
+increment skew binary numbers in *constant* time.  This is analogous
+to saying that you can insert into a skew binary tree in constant
+time.
+
+To repeat: *you can insert into a skew binary tree in **constant**
+time.  Insert is not recursive!  Damn, that's cool.
+
+So, we think that maybe it's possible to do constant-time insertion
+into a substitution that's represented using a skew binary tree.
+
+--- end June 3, 2009 section ---
+
+Another idea for representing substitutions is by binding more than
+one thing to each item in the list.  We had an idea earlier called
+_path compression_, which works as follows: Suppose we have a
+substitution like this:
+
+((z . q) ... (y . z) ... (x . y))
+
+If we're looking up x in this list, then we have to then lookup y and
+then lookup z.  And this happens every time we lookup x.  But, if the
+first time we lookup x, we observe that this substitution also implies
+(x . z) and (x . q), then we can add those pairs to the beginning of
+the list, giving us
+
+((x . q) (x . z) (z . q) ... (y . z) ... (x . y))
+
+which gives us faster lookups next time we lookup x.  There's the
+drawback that we're making the substitution longer, though.  Now this
+is starting to look more like an idempotent substitution, in that we
+only have to look at the very first pair for a particular walked
+variable.
+
+We could also represent such a substitution like this:
+
+((q z y x) (z y x) (y x))
+
+And then we'd write walk this way:
+
+(define walk
+  (lambda (u s)
+    (cond
+      [(null? s) `(,u)]
+      [(memq u (cdr s)) (car s)]
+      [else (walk u (cdr s))]))))
+
+We thought at first that this might be a way to avoid unwanted data in
+the substitution when we're looking things up -- "it's not of the
+family Foo, so forget it!"
+
+Aside: The commutative conjunction problem
+------------------------------------------
+
+Suppose we have two goals, and we want to succeed iff they both
+succeed.  That is, if one fails, we want to immediately fail
+regardless of what the other one is doing (whether it has succeeded or
+whether it's still going).  Our intention here isn't speed, though --
+our intention 
+
+Each goal returns a substitution.  But since a substitution is "just
+knowledge", 
+
+(I wondered if there's a possibility that both goals could succeed
+individually (each returning a substitution), but that together they'd
+fail (the resulting substitutions are self-consistent but somehow
+contradict each other).  But Dan says that we think that that's not
+true -- that if they each succeed on their own, they'll definitely
+succeed together.  That seems to make sense to me, but we don't have a
+proof.)
+
+So: we've got two goals, say, g1 and g2, and we have the steps
+involved in creating the substitution for each goal, say, 0s1, 1s1,
+2s1, ..., and 0s2, 1s2, 2s2 ... .  These "steps" represent the new
+bindings added to the substitutions -- one step for each binding.
+
+We'd like to be able to evaluate g1 and g2 in parallel and share
+information between them, and all the information we want to share is
+captured in the substitutions as they evolve.  So, we want to
+interleave them somehow -- say, 0s1, 0s2, 1s1, 1s2, ... .  Of course,
+these aren't quite the same as the "steps" above.  Each one must
+subsume all the ones before it.
+
+At what point do we interleave?  Well, one possibility is to
+interleave each time the substitution is extended.  When g1 causes the
+substitution to be extended, we go to g2 and try to get it to extend.
+But the problem here is that one goal might be "waiting to fail" while
+the other goal is searching and searching for a place to extend the
+substitution.  So we don't know what to do.
+
+--- begin another June 3, 2009 section ---
+
+Another aside: Dan's idea for walk*
+-----------------------------------
+
+Suppose we have
+
+(lambda (f q)
+  (exist (x y z w v)
+    (f v w)
+    (g y w)
+    (h z w v)))
+
+"(h z w v) kind of feels like a tail call, wouldn't you agree?"
+
+Right before (h z w v), suppose the substitution looks like this:
+
+((y . 7) (w . 6) (v . 5))
+
+When we call (h z w v), we walk* all its arguments.  The key insight
+we get from that is that if there are any variables left in z, w, or
+v, those variables don't exist in the lhs of a binding in the current
+substitution.  Any variables left in z, w, or v are unbound.  So, in
+some sense, we might as well be running h on the empty substitution.
+
