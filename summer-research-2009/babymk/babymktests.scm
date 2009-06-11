@@ -125,4 +125,4 @@
   (lambda ()
     (and2 (anyo (== #f #f)) (== #f #t))))
 
-(run 2 (q) (cc-test))
+;; (run 2 (q) (cc-test))
