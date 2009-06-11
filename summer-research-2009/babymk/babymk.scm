@@ -183,15 +183,19 @@
            (cons (car a)
                  (take (and n (- n 1)) (f))))))))
 
-(define-syntax and+
-  (syntax-rules ()
-    [(_ g) g]
-    [(_ g0 g ...) (and2 g0 (and+ g ...))]))
-
 (define and2
   (lambda (g1 g2)
     (lambda (s)
       (bind (g1 s) g2))))
+
+(define-syntax and2n
+  (syntax-rules ()
+    [(_ g1 g2) (and2 (lambda (s) (g1 s)) (lambda (s) (g2 s)))]))
+
+(define-syntax and+
+  (syntax-rules ()
+    [(_ g) g]
+    [(_ g0 g ...) (and2 g0 (and+ g ...))]))
 
 (define bind
   (lambda (a-inf g)
@@ -204,6 +208,15 @@
     (lambda (s)
       (mplus (g1 s) (lambdaf@ () (g2 s))))))
 
+(define-syntax or2n
+  (syntax-rules ()
+    [(_ g1 g2) (or2 (lambda (s) (g1 s)) (lambda (s) (g2 s)))]))
+
+(define-syntax or+
+  (syntax-rules ()
+    [(_ g) g]
+    [(_ g0 g ...) (or2 g0 (or+ g ...))]))
+
 (define mplus
   (lambda (a-inf f)
     (case-inf a-inf
@@ -214,6 +227,11 @@
   (lambda (x var-g)
     (lambdag@ (s)
       ((var-g (walk* x s)) s))))
+
+(define-syntax conde
+  (syntax-rules ()
+    [(_ (g0 g ...) ...)
+     (or+ (and+ g0 g ...) ...)]))
 
 (define succeed (== #f #f))
 
