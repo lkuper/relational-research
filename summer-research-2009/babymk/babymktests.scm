@@ -119,6 +119,20 @@
       (and2 (print-s) (anyo (== #t q))))))
   '(_.0 #t _.0 #t _.0 #t _.0 #t _.0 #t _.0 #t _.0 #t _.0 #t _.0 #t _.0 #t))
 
+(test-check "test10"
+  (run 1 (q)
+    (exist (x y z)
+      (== `(,x ,y ,z) q)))
+  '((_.0 _.1 _.2)))
+
+(test-check "test11"
+  (run* (q)
+    (conde
+      [(== q 1) (== #f #f)]
+      [(== q 1) (== #f #t)]
+      [(== q 2) (== #t #t)]))
+  '(1 2))
+
 ;; This one won't terminate until we get commutative conjunction
 ;; working.
 (define cc-test
