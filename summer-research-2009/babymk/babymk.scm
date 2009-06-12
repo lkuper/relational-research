@@ -177,11 +177,9 @@
   (lambda (n a-inf)
     (case-inf a-inf
       (() '())
-      ((a f)
-       (if (and n (= 1 n))
-           a
-           (cons (car a)
-                 (take (and n (- n 1)) (f))))))))
+      ((a f) (cons (car a) (if (and n (= n 1))
+                               '()
+                               (take (and n (- n 1)) (f))))))))
 
 (define and2
   (lambda (g1 g2)
