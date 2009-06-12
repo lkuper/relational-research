@@ -1,0 +1,269 @@
+I here summarize my model for implementing disequality constraints in nominal
+miniKanren (aka alphaKanren). The basis for this summary is the series of
+emails duplicated at the end of this file.
+
+A package p contains a substitution s and a freshness environment h*. 
+(unify u v p) tries to unify u and v in s and then verify the constraints in h*.
+Therefore unify returns an extended s and a changed h* if it succeeds. (No
+extension and no change are possible.) I assume we already know how to
+implement this version of unify.
+
+The task: explain how to implement (=/= u v), hereafter called "the goal".
+
+We shall speak of disequality constraints. A disequality constraint consists of
+a substitution (a substitution prefix, to be clear), and a freshness
+environment. In other words, it is a package, but the meaning of its contents
+is quite different from that of an ordinary package. We shall also speak of
+"ensuring that X holds in future substitutions". Exactly how to do that will be
+explained after the cases are covered.
+
+We proceed by case analysis.
+
+Case 1: (unify u v p) fails.
+The goal succeeds unconditionally.
+
+Case 2: (unify u v p) succeeds and does not change s or h*.
+The goal fails unconditionally.
+
+Case 3: (unify u v p) succeeds and extends s but does not change h*.
+The goal succeeds provisionally. We add a disequality constraint that contains
+the prefix of the extended s. We ensure that the associations (or equivalent)
+in the prefix are never all made in a future package.
+
+Case 4: (unify u v p) succeeds and adds freshness constraints to h* but does
+not change s.
+The goal succeeds provisionally. We add a disequality constraint that contains
+the new freshness constraints. We ensure that these freshness constraints are
+never all satisfied in a future package.
+
+Case 5: (unify u v p) succeeds and extends s and adds freshness constraints to h*.
+The goal succeeds provisionally. We add a disequality constraint that contains
+the prefix of the extended s and the new freshness constraints. We ensure that
+the following never holds in a future package: "the associations (or
+equivalent) in the prefix are all made and the freshness constraints are all
+satisfied."
+
+Note: we have only considered the addition of freshness constraints to h*.
+unify may also remove freshness constraints, but the claim is that these can
+always be ignored.
+
+We now describe how to ensure the conditions of the disequality constraints are
+satisfied in future packages. This checking procedure must be run every time
+the current package changes (e.g. as part of running an == goal). The condition
+from case 5 is the general case of the conditions in cases 3 and 4, so we deal
+with case 5 only.
+
+Define the contents of the disequality constraint as a substitution !s and a
+freshness environment !h*. The current package consists, as usual, of s and h*.
+To check the constraint in the current package
+
+1. Unify the left and right hand sides of each pair in !s, the first one in the
+current package, the second one in the resulting package, etc. If this process
+fails at any point, the disequality constraint can be dropped. If not, let us
+say the last package contains s^ and h*^. So we have a new substitution prefix
+!s^ (the prefix of s^ compared to s) and a new freshness environment h*^.
+
+2. Compute the set union of h*^ and h*, and call the result -!h*^.
+
+3. Check each freshness constraint in -!h*^ in the context of the current
+package. That means determine whether each constraint is violated, might be
+violated, or will never be violated. If any is violated the (original)
+disequality constraint can be dropped. If not, define !h*^ as the set of
+freshness constraints in -!h*^ that might be violated.
+
+The new disequality constraint, if it was not dropped, consists of !s^ and
+!h*^. If both of these are empty, the disequality constraint is violated and we
+fail. Otherwise we remember the new disequality constraint and continue.
+
+
+--- The emails, including attempts to justify the above claims ---
+
+I feel like there are some abstract arguments we can make on our own...
+
+First of all, I think I need verify-h* to be more tightly coupled to
+unify, because the nominal unification algorithm includes both of
+those passes together, not either one on its own. Therefore, assuming
+a p contains a substitution s and a freshness environment h*, I will
+say (unify u v p) returns p with possibly extended s and possibly
+changed h* if u and v unify in p, and returns #f otherwise. I say
+"changed" because although h* can only be extended during the first
+phase, freshness constraints can be dropped in the second phase,
+namely when extensions to the substitution have guaranteed
+satisfaction of certain freshness constraints.
+
+Now suppose we have a goal (=/= u v) where u and v are some terms.
+
+This goal succeeds if u cannot equal v.
+
+Case 1: (unify u v p) fails. Then the goal succeeds and we can forget
+about the constraint.
+
+If u can equal v, then either u must unconditionally equal v, or u can
+equal v under certain conditions.
+
+Case 2: (unify u v p) succeeds and does not change the substitution or
+the freshness constraints. Then the goal fails immediately.
+
+Now we need to get into the different kinds of conditions under which
+u can equal v. The simplest case is where u can equal v if we add some
+associations to the substitution and leave the freshness environment
+completely untouched. This corresponds to disequality constraints as
+we've seen them so far.
+
+Case 3: (unify u v p) succeeds and extends the substitution but leaves
+the freshness environment completely unchanged. Then the goal succeeds
+provisionally: we must remember how the substitution was extended and
+ensure that those associations (or equivalent) don't get made in the
+future. As you know, we can do this by remembering the prefix of the
+substitution and testing the associations in it in future
+substitutions.
+
+Now the complicated cases, where u and v could be equal -- A) but only
+with some extra freshness constraints; B) but if they were some
+freshness constraints would disappear; C) but then there would be some
+new freshness constraints and others missing; D, E, and F - the same
+as A, B, and C, but with extensions to the substitution required also.
+
+I think maybe case B is impossible. Freshness constraints don't just
+disappear for no reason - they can only disappear if the substitution
+changes. Right? If so, then C is also impossible. What about case E? I
+think it's possible, but what do the missing freshness constraints do
+to the disequality constraint? I suspect they don't make a difference:
+if u and v were equal we would lose these constraints, but we're
+trying to ensure u and v are not equal. If we lose the freshness
+constraints, it doesn't necessarily tell us that u and v are equal,
+and we have a better test for that anyway (checking the substitution).
+So perhaps we can treat case E just like case 3 and not remember the
+changes to h*.
+
+Case A should be the easiest of those remaining. All we would need for
+u and v to be equal are some extra freshness constraints, for example
+(# a t1) and (# b t2). But we don't want u and v to be equal. So those
+extra freshness constraints must be violated from the start. We need
+"anti-freshness" constraints in the sense that one of either "t1
+contains a" or "t2 contains b" had better be true. If they're both not
+true, u and v would be equal, and our goal will fail. The problem is
+t1 and t2 might not be ground, so we might not know whether they
+contain a and b. So it looks like we'll have to carry these
+anti-freshness constraints around, and if they ever get violated (i.e.
+t1 is proven not to contain a and t2 is proven not to contain b) then
+the original goal will have failed. So the disequality constraint we
+carry looks like a disjunction of anti-freshness constraints that need
+to get checked with every unification.
+
+Cases D and F should now combine the results from case A with the
+method for case E. Can I leave that to you for now...? =P I'll think
+about it later, maybe tomorrow.
+
+Pushing on with the two remaining cases now, although there be
+simplifications to be made in the previous email.
+
+I remind you that the goal is (=/= u v) and case D is where (unify u v
+p) extends s and adds new freshness constraints only and case F is
+where (unify u v p) extends s and adds new freshness constraints and
+removes old freshness constraints. Following similar reasoning to case
+E, I suggest that the freshness constraints lost in case F can be
+ignored. The reasoning was that although they disappear if u and v are
+equal, their disappearance is not diagnostic, so watching them doesn't
+help in ensuring u and v are not equal. If this is okay, then we can
+treat case F in the same way we treat case D.
+
+In case D we have two interesting pieces of information from (unify u
+v p): the prefix of the extended substitution, and a set of extra
+freshness constraints. Suppose we actually wanted to equate u and v.
+Then all of the new associations would need to be valid, and all of
+the freshness constraints would need to be satisfied. Negating that,
+any of the new associations need to be impossible or any of the
+freshness constraints need to be violated. So we can satisfy our (=/=
+u v) goal provisionally if we remember the prefix of the substitution
+and a disjunction of anti-freshness constraints, i.e. freshness
+constraints one of which we would like to be violated. We need to
+check these things with every subsequent call to unify. I'll try to
+figure out how that checking should work.
+
+Suppose we have a constraint (s . h*) where s is a substitution prefix
+and h* is a set of anti-freshness constraints. After the package has
+changed (after a call to unify) we want to check this constraint so we
+can fail if it is violated or update it if it can be made smaller.
+Maybe the following could work. First we try unifying all the pairs in
+s. If that fails, the constraint is always satisfied and we can drop
+it. If it doesn't fail, then we have a new substitution, hence a new
+substitution prefix, and a new set of freshness constraints h*^ for
+which unifying all the pairs in s succeeded. Now we need to check
+whether any of the anti-freshness constraints in h* can be satisfied
+(i.e. any of the freshness constraints in h* can be violated). Perhaps
+first, though, we need to combine h* and h*^ somehow.
+
+Anyone want to complete this for me? =P I want to take a break again.
+And also to get a list of problems with the story so far from you.
+
+I suspect the right way to merge h* and h*^ is to do a set union on
+them. I'll remind/tell you that I represent freshness constraints as
+(var . nom) which means var cannot be associated with nom. You get
+from (# a t) to a set {(xi . a)} by recursive search for vars in t. If
+we merge h* and h*^ to make h*+ then to complete checking of the
+disequality constraint, we can search for a violated constraint in h*+
+(which means the disequality constraint is always satisfied and can be
+dropped) and in the process drop any constraints in h*+ that can never
+be violated. That would give us the new h*++ to store in the package.
+
+If you follow this, tell me whether you think it's correct. If not,
+tell me and I'll try to explain better.
+
+"h*++ to store in the package" - I mean it replaces h* in (s . h*)
+which was one of our disequality constraints.
+
+I am currently facing the possibility that unify should take four
+arguments, u, v, s, and h*, and should return either #f or three
+values: extended s, any new h*, and any remaining (although possibly
+changed) h*. The most demanding caller of unify is =/= (and also
+verify-c*), because it wants to know exactly which freshness
+constraints were the new ones, if any.
+
+My current representation of h* is a list of (nom . var), which should
+not contain duplicates. Note that I may have previously said (var .
+nom), but I think I should switch to (nom . var) so it looks more like
+(# a t) with the nom first. The meaning of (nom . var) is that var
+should not unify to nom. Note that var is a var, i.e. a suspension
+with an empty permutation.
+
+I imagine verify-h* will be called twice after unify, once on the new
+constraints and once on the old constraints. The constraint sets are
+kept separate for =/=, but otherwise they should be appended. I think
+they should be disjoint, though.
+
+I also have a question about verify-h*, and I wouldn't mind your
+taking a look at it to see if it is correct. verify-h* takes a list of
+(nom . var) and a substitution in which to verify them.
+
+ (define verify-h*
+   (lambda (h* s)
+     (let rec ((h* h*) (ac '()))
+       (if (null? h*) ac
+         (let ((ac (extend-h* (caar h*) (cdar h*) s ac)))
+           (and ac (rec (cdr h*) ac)))))))
+
+ (define extend-h*
+   (lambda (a t s h*)
+     (let rec ((t t) (h* h*))
+       (let ((t (walk t s)))
+         (cond
+           ((eq? a t) #f)
+           ((sus? t)
+            (let ((a (apply-pi (reverse (sus-pi t)) a)))
+              (ext-h* a (sus-v t) h*)))
+           ((and (tie? t) (not (eq? a (tie-a t))))
+            (rec (tie-t t) h*))
+           ((pair? t)
+            (let ((h* (rec (car t) h*)))
+              (and h* (rec (cdr t) h*))))
+           (else h*))))))
+
+The question is - Does the call to reverse in extend-h* seem correct?
+I can explain it, if not. This is a question because in alphaK which
+Joe uses, there is no reverse (the function is called hash-check
+there), but if I put it in his tests still pass, and I think it should
+be in.
+
+The other question is is there a way to avoid having to keep new
+constraints and old constraints separate when unify returns?
