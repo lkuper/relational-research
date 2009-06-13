@@ -183,7 +183,7 @@
   (run* (q)
     (fresh (b)
       (== b q)))
-  '(a0))
+  '(a.0))
 
 (test 'fresh4
   (run* (q)
@@ -193,13 +193,13 @@
         (fresh (a b)
           (== y a)
           (== `(,x ,y ,z ,a ,b) q)))))
-  '((a0 a1 _.0 a1 a2)))
+  '((a.0 a.1 _.0 a.1 a.2)))
 
 (test 'tie1
   (run* (q)
     (fresh (a b)
       (== (tie a `(foo ,a 3 ,b)) q)))
-  '((tie a0 (foo a0 3 a1))))
+  '((tie a.0 (foo a.0 3 a.1))))
 
 (test 'hash0
   (run* (q)
@@ -234,7 +234,7 @@
         (hash a x)
         (== `(,y ,z) x)
         (== `(,x ,a) q))))
-  '((((_.0 _.1) a0) (hash (a0 . (_.0 _.1))))))
+  '((((_.0 _.1) a.0) (hash (a.0 . (_.0 _.1))))))
 
 (test 'unify-tie1
   (run* (q)
@@ -248,21 +248,21 @@
       (exist (x y)
         (== (tie a (tie a x)) (tie a (tie b y)))
         (== `(,x ,y) q))))
-  `((((sus ((a0 . a1)) _.0) _.0) . (a0 . (_.0)))))
+  `((((sus ((a.0 . a.1)) _.0) _.0) (hash (a.0 . (_.0))))))
 
 (test 'unify-tie3
-      (run* (q)
-        (fresh (a b)
-          (exist (x y)
-            (conde
-              [(== (tie a (tie b `(,x ,b))) (tie b (tie a `(,a ,x))))]
-              [(== (tie a (tie b `(,y ,b))) (tie b (tie a `(,a ,x))))]
-              [(== (tie a (tie b `(,b ,y))) (tie b (tie a `(,a ,x))))]
-              [(== (tie a (tie b `(,b ,y))) (tie a (tie a `(,a ,x))))])
-            (== q `(,x ,y)))))
-      '((a0 a1)
-        (_.0 (sus ((a0 . a1)) _.0))
-        ((_.0 (sus ((a0 . a1)) _.0)) : (a0 . (_.0)))))
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (conde
+          [(== (tie a (tie b `(,x ,b))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,y ,b))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,b ,y))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,b ,y))) (tie a (tie a `(,a ,x))))])
+        (== q `(,x ,y)))))
+  '((a.0 a.1)
+    (_.0 (sus ((a.0 . a.1)) _.0))
+    ((_.0 (sus ((a.0 . a.1)) _.0)) (hash (a.0 . (_.0))))))
 
 (test 'type1
       (run* (q)
@@ -308,14 +308,14 @@
       (fresh (a b)
         (substo `(lam ,(tie a `(app (var ,a) (var ,b))))
           `(var ,b) a q)))
-    '((lam (tie a0 (app (var a0) (var a1))))))
+    '((lam (tie a.0 (app (var a.0) (var a.1))))))
 
   (test 'substo2
     (run* (x)
       (fresh (a b)
         (substo `(lam ,(tie a `(var ,b)))
           `(var ,a) b x)))
-    '((lam (tie a0 (var a1))))))
+    '((lam (tie a.0 (var a.1))))))
 
 (test-letrec ((typo
            (lambda (g e te)
@@ -362,8 +362,8 @@
   (test 'typo3
     (run 2 (q)
       (typo '() q '(arr int int)))
-    '((lam (tie a0 (var a0)))
-      (lam (tie a0 (app (lam (tie a1 (var a1))) (var a0)))))))
+    '((lam (tie a.0 (var a.0)))
+      (lam (tie a.0 (app (lam (tie a.1 (var a.1))) (var a.0)))))))
 
 (test 'acab-0
   (run* (q)
@@ -376,20 +376,20 @@
     (fresh (a b c)
       (== q a)
       (== (tie b (tie c b)) (tie a (tie b q)))))
-  '(a0))
+  '(a.0))
 
 (test 'acab-2
   (run* (q)
     (fresh (a b c)
       (== (tie b (tie c b)) (tie a (tie b q)))
       (== q a)))
-  '(a0))
+  '(a.0))
 
 (test 'acab-3
   (run* (q)
     (fresh (a b c)
       (== (tie b (tie c b)) (tie a (tie b q)))))
-  '(a0))
+  '(a.0))
 
 (mtest "pa/ir-0"
   (run* (q) (pa/ir q))
