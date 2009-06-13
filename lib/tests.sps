@@ -1,5 +1,5 @@
 (import (rnrs) (rnrs eval))
-(define test-library '(minikanren <test me>))
+(define test-library '(minikanren nominal-disequality))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
 

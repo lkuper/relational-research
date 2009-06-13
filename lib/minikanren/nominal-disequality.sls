@@ -1,4 +1,4 @@
-(library (minikanren nominal)
+(library (minikanren nominal-disequality)
   (export run run* conde exist fresh hash == ==-check (rename (make-tie tie)))
   (import (rnrs))
 
@@ -11,10 +11,19 @@
   (define-record-type nom (fields n))
   (define-record-type tie (fields a t))
 
-  (define-record-type p (fields s h*))
-  (define p/h* (lambda (p h*) (make-p (p-s p) h*)))
-  (define p/s (lambda (p s) (make-p s (p-h* p))))
-  (define empty-p (make-p '() '()))
+  ; v means var, x means sus, a means nom
+  ; s  :: ((v . t) ...)
+  ; h* :: ((a . v) ...)
+  ; c* :: ((s . h*) ...)
+
+  (define-record-type p (fields s h* c*))
+  (define p/s (lambda (p s) (make-p s (p-h* p) (p-c* p))))
+  (define p/h* (lambda (p h*) (make-p (p-s p) h* (p-c* p))))
+  (define p/c* (lambda (p c*) (make-p (p-s p) (p-h* p) c*)))
+  (define empty-p (make-p '() '() '()))
+  (define c-s (lambda (c) (car c)))
+  (define c-h* (lambda (c) (cdr c)))
+  (define make-c (lambda (s h*) `(,s . ,h*)))
 
   (define-syntax case-inf
     (syntax-rules ()
@@ -86,9 +95,15 @@
   (define ==
     (lambda (u v)
       (lambdag@ (p)
-        (let ((p (unify u v p)))
-          (and p (let ((h* (verify-h* (p-h* p) (p-s p))))
-                   (and h* (p/h* p h*))))))))
+        (let ((p (nominal-unify u v p)))
+          (and p (let ((c* (verify-c* p)))
+                   (and c* (p/c* p c*))))))))
+
+  (define nominal-unify
+    (lambda (u v p)
+      (let ((p (unify u v p)))
+        (and p (let ((h* (verify-h* (p-h* p) (p-s p))))
+                 (and h* (p/h* p h*)))))))
 
   (define ==-check ==)
 
@@ -120,6 +135,27 @@
         (if (null? h*) ac
           (let ((ac (do-hash (caar h*) (cdar h*) s ac)))
             (and ac (rec (cdr h*) ac)))))))
+
+  (define verify-c*
+    (lambda (p)
+      (let rec ((c* (p-c* p)))
+        (if (null? c*) '()
+          (let ((c (do-=/= (car c*) p)))
+            (and c `(,c . ,(rec (cdr c*)))))))))
+
+  (define do-=/=
+    (lambda (c p0)
+      (let rec ((!s (c-s c)) (p p0))
+        (if (null? !s) 
+          (let ((!s^ (new-s (p-s p) (p-s p0)))
+                (!h*^ (verify-h*
+                        (h*-union (new-h* (p-h* p) (p-h* p0)) (c-h* c))
+                        (p-s p0))))
+            (and !h*^
+              (or (pair? !s^) (pair? !h*^))
+              (make-c !s^ !h*^)))
+          (let ((p (nominal-unify (caar !s) (cdar !s) p)))
+            (and p (rec (cdr !s) p)))))))
 
   (define walk
     (lambda (t s)
@@ -171,11 +207,10 @@
 
   (define unify=sus
     (lambda (a* v p)
-      (let ((s (p-s p)))
-        (let rec ((a* a*) (h* (p-h* p)))
-          (if (null? a*) (make-p s h*)
-            (let ((h* (do-hash (car a*) v s h*)))
-              (and h* (rec (cdr a*) h*))))))))
+      (let rec ((a* a*) (h* (p-h* p)))
+        (if (null? a*) (p/h* p h*)
+          (let ((h* (do-hash (car a*) v (p-s p) h*)))
+            (and h* (rec (cdr a*) h*)))))))
 
   (define unify-ties
     (lambda (au av tu tv p)

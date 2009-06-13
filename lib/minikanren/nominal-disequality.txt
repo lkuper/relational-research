@@ -61,20 +61,20 @@ To check the constraint in the current package
 current package, the second one in the resulting package, etc. If this process
 fails at any point, the disequality constraint can be dropped. If not, let us
 say the last package contains s^ and h*^. So we have a new substitution prefix
-!s^ (the prefix of s^ compared to s) and a new freshness environment h*^.
+!s^, the prefix of s^ compared to s, and a new set h*1 defined as the freshness
+constraints that are in h*^ but not in h*.
 
-2. Compute the set union of h*^ and h*, and call the result -!h*^.
+2. Compute the set union of h*1 and !h*, and call the result h*2.
 
-3. Check each freshness constraint in -!h*^ in the context of the current
+3. Check each freshness constraint in h*2 in the context of the current
 package. That means determine whether each constraint is violated, might be
 violated, or will never be violated. If any is violated the (original)
 disequality constraint can be dropped. If not, define !h*^ as the set of
-freshness constraints in -!h*^ that might be violated.
+freshness constraints in h*2 that might be violated.
 
 The new disequality constraint, if it was not dropped, consists of !s^ and
 !h*^. If both of these are empty, the disequality constraint is violated and we
 fail. Otherwise we remember the new disequality constraint and continue.
-
 
 --- The emails, including attempts to justify the above claims ---
 
