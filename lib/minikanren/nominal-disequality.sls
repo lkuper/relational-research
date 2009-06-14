@@ -1,5 +1,5 @@
 (library (minikanren nominal-disequality)
-  (export run run* conde exist fresh hash == ==-check (rename (make-tie tie)))
+  (export run run* conde exist fresh hash =/= == ==-check (rename (make-tie tie)))
   (import (rnrs))
 
   (define-syntax lambdaf@ (syntax-rules () ((_ () e) (lambda () e))))
@@ -92,6 +92,22 @@
   (define compose-pis append)
   (define invert-pi reverse)
 
+  (define s-extension
+    (lambda (s^ s)
+      (if (eq? s^ s) '()
+        `(,(car s^) . ,(s-extension (cdr s^) s)))))
+
+  (define h*-extension
+    (lambda (h*^ h*)
+      (cond
+        ((null? h*^) '())
+        ((member (car h*^) h*) (h*-extension (cdr h*^) h*))
+        (else `(,(car h*^) . ,(h*-extension (cdr h*^) h*))))))
+
+  (define h*-union
+    (lambda (h*1 h*2)
+      `(,@(h*-extension h*1 h*2) ,@h*2)))
+
   (define ==
     (lambda (u v)
       (lambdag@ (p)
@@ -106,6 +122,19 @@
                  (and h* (p/h* p h*)))))))
 
   (define ==-check ==)
+
+  (define =/=
+    (lambda (u v)
+      (lambdag@ (p)
+        (cond
+          ((nominal-unify u v p)
+           => (lambda (!p)
+                (let ((!s (s-extension (p-s !p) (p-s p)))
+                      (!h* (h*-extension (p-h* !p) (p-h* p))))
+                  (and
+                    (or (pair? !s) (pair? !h*))
+                    (p/c* p `(,(make-c !s !h*) . ,(p-c* p)))))))
+          (else p)))))
 
   (define hash
     (lambda (a t)
@@ -140,16 +169,16 @@
     (lambda (p)
       (let rec ((c* (p-c* p)))
         (if (null? c*) '()
-          (let ((c (do-=/= (car c*) p)))
+          (let ((c (update-c (car c*) p)))
             (and c `(,c . ,(rec (cdr c*)))))))))
 
-  (define do-=/=
+  (define update-c
     (lambda (c p0)
       (let rec ((!s (c-s c)) (p p0))
         (if (null? !s) 
-          (let ((!s^ (new-s (p-s p) (p-s p0)))
+          (let ((!s^ (s-extension (p-s p) (p-s p0)))
                 (!h*^ (verify-h*
-                        (h*-union (new-h* (p-h* p) (p-h* p0)) (c-h* c))
+                        (h*-union (h*-extension (p-h* p) (p-h* p0)) (c-h* c))
                         (p-s p0))))
             (and !h*^
               (or (pair? !s^) (pair? !h*^))
@@ -273,6 +302,50 @@
 
   ; reification needs to be replaced by something more like the "rak" reifier
 
+  (define purify-c*
+    (lambda (c* s)
+      (define ground?
+        (lambda (t)
+          (cond
+            ((sus? t) (not (sus? (walk t s))))
+            ((tie? t) (ground? (tie-t t)))
+            ((pair? t) (and
+                         (ground? (car t))
+                         (ground? (cdr t))))
+            (else #t))))
+      (filter ground? c*)))
+
+  (define remove-subsumed-c*
+    (lambda (c*)
+      (let rec ((c* c*) (a '()))
+        (if (null? c*) a
+          (rec (cdr c*)
+            (if (or
+                  (subsumed-c*? (car c*) a)
+                  (subsumed-c*? (car c*) (cdr c*)))
+              a
+              `(,(car c*) . ,a)))))))
+
+  (define subsumed-c*?
+    (lambda (c c*)
+      ; want to know whether c is unnecessary given c*
+      ; c contains bindings and freshness constraints that should never be simultaneously all satisfied.
+      ; if there is a c1 in c* such that
+      ;   if you assume c's contents are satisfied
+      ;   then c1's contents are also satisfied
+      ; then c is unnecessary given c*
+      ; because:
+      ; c1 has some subsets of c's bindings and freshnesses
+      ; so asserting that c1 should not be satisfied implies c should not be satisfied
+      ; (c sat => c1 sat) => (c1 not sat => c not sat)
+      (and (pair? c*)
+        (or (satisfied-c? (car c*) c)
+          (subsumed-c*? c (cdr c*))))))
+
+  (define satisfied-c?
+    (lambda (c1 c)
+      (not (update-c c1 (make-p (c-s c) (c-h* c) '())))))
+
   (define rwalk
     (lambda (t s)
       (let rec ((t t) (pi '()))
@@ -322,9 +395,16 @@
         (let ((v (walk* v (p-s p))))
           (let ((r (reifying-s v)))
             (let ((v (walk* v r))
-                  (h* (reify-h* (p-h* p) r)))
-              `(,(if (pair? h*)
-                   `(,v (hash . ,h*))
+                  (h* (reify-h* (p-h* p) r))
+                  (c* (walk*
+                        (remove-subsumed-c*
+                          (purify-c* (walk* (p-c* p) (p-s p))
+                            r))
+                        r)))
+              `(,(if (or (pair? h*) (pair? c*))
+                   `(,v
+                     ,@(if (pair? h*) `((hash . ,h*)) '())
+                     ,@(if (pair? c*) `((=/= . ,c*)) '()))
                    v))))))))
 
   (define reify-h*
