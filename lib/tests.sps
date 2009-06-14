@@ -1,29 +1,29 @@
-(import (minikanren vanilla)
+(import (minikanren <test me>)
   (rnrs) (rnrs eval))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
 
 (define-syntax define-missing-exports
   (lambda (o)
+    (define unbound?
+      (let ((empty-ctxt (car (generate-temporaries '(t)))))
+        (lambda (id)
+          (let ((unbound-id (datum->syntax empty-ctxt (syntax->datum id))))
+            (free-identifier=? id unbound-id)))))
     (syntax-case o ()
-      ((_ var ...)
+      ((_ id ...)
        #`(begin .
-           #,(let rec ((ls #'(var ...)))
+           #,(let rec ((ls #'(id ...)))
                (cond
                  ((null? ls) '())
-                 ((guard (con
-                           ((undefined-violation? con) #f)
-                           (else #t))
-                    (eval (syntax->datum (car ls))
-                      (environment '(minikanren vanilla))))
-                  (rec (cdr ls)))
-                 (else
-                   (cons
-                     #`(define-syntax #,(car ls)
-                         (lambda (o)
-                           (syntax-case o ()
-                             (_ #'(raise (symbol->string '#,(car ls)))))))
-                     (rec (cdr ls)))))))))))
+                 ((unbound? (car ls))
+                  (cons
+                    #`(define-syntax #,(car ls)
+                        (lambda (o)
+                          (syntax-case o ()
+                            (_ #'(raise (symbol->string '#,(car ls)))))))
+                    (rec (cdr ls))))
+                 (else (rec (cdr ls))))))))))
 
 (define-missing-exports
   run run* run+ conde exist ==
@@ -71,7 +71,7 @@
           (let ((t title))
             (guard (con
                      ((string? con)
-                      (name title (skip (string-append "no " con)) #f #f)))
+                      (test title (skip (string-append "no " con)) #f #f)))
               (let ((th (lambda () expr)))
                 (print "Testing " t "...")
                 (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
@@ -3958,12 +3958,9 @@ it can be avoided with tabling as long as the argument list doesn't change
       `((#f _.0) (_.0 #f) (#f #f) (#f #f) (#f #f))))
 
   (letrec
-    ((any* (lambda (g)
-             (conde
-               (g)
-               ((any* g)))))
-     (never (any* (== #t #f)))
-     (always (any* (== #f #f))))
+    ((any* (lambda (g) (conde (g) ((any* g))))))
+    (let ((never (any* (== #t #f)))
+          (always (any* (== #f #f))))
 
       (dtest "testc17.tex-5" 
         (run 1 (q)
@@ -4087,7 +4084,7 @@ it can be avoided with tabling as long as the argument list doesn't change
               ((== #f q)))
             always)                                           
           (== #t q))
-        `(#t #t #t #t #t)))
+        `(#t #t #t #t #t))))
   (letrec
     ((bit-xoro
        (lambda (x y r)
