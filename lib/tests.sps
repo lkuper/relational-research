@@ -1,9 +1,7 @@
-(import (minikanren nominal-disequality)
+(import (minikanren vanilla)
   (rnrs) (rnrs eval))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
-
-(define-condition-type &missing &condition make-missing-condition missing-condition? (export missing-export))
 
 (define-syntax define-missing-exports
   (lambda (o)
@@ -13,19 +11,19 @@
            #,(let rec ((ls #'(var ...)))
                (cond
                  ((null? ls) '())
-                 ((call/cc
-                    (lambda (k)
-                      (with-exception-handler
-                        (lambda (x) (k (not (undefined-violation? x))))
-                        (lambda () (eval (syntax->datum (car ls))
-                                     (environment '(minikanren nominal-disequality)))))))
+                 ((guard (con
+                           ((undefined-violation? con) #f)
+                           (else #t))
+                    (eval (syntax->datum (car ls))
+                      (environment '(minikanren vanilla))))
                   (rec (cdr ls)))
                  (else
-                   `(,#`(define-syntax #,(car ls)
-                          (lambda (o)
-                            (syntax-case o ()
-                              (_ #'(raise (make-missing-condition '#,(car ls)))))))
-                     . ,(rec (cdr ls)))))))))))
+                   (cons
+                     #`(define-syntax #,(car ls)
+                         (lambda (o)
+                           (syntax-case o ()
+                             (_ #'(raise (symbol->string '#,(car ls)))))))
+                     (rec (cdr ls)))))))))))
 
 (define-missing-exports
   run run* run+ conde exist ==
@@ -71,25 +69,19 @@
          ((_ title skip pl ... expr pr ...) (name title (skip "no reason") pl ... expr pr ...))
          ((_ title pl ... expr pr ...)
           (let ((t title))
-            (call/cc
-              (lambda (k)
-                (with-exception-handler
-                  (test-exception-handler t k)
-                  (lambda ()
-                    (let ((th (lambda () expr)))
-                      (print "Testing " t "...")
-                      (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
-                      (print " done" nl)))))))))))))
+            (guard (con
+                     ((string? con)
+                      (name title (skip (string-append "no " con)) #f #f)))
+              (let ((th (lambda () expr)))
+                (print "Testing " t "...")
+                (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
+                (print " done" nl))))))))))
 
 (define-syntax define-dtest
   (lambda (o)
     (syntax-case o ()
       ((_ dtest do-dtest)
-       (call/cc
-         (lambda (k)
-           (with-exception-handler
-             (lambda (x) (k #f))
-             (lambda () (environment '(scheme))))))
+       (guard (con (else #f)) (environment '(scheme)))
        #'(begin
            (define do-dtest
              (let ((make-engine (eval 'make-engine (environment '(scheme))))
@@ -111,13 +103,6 @@
 (define-test ftest () expr (expe) (do-ftest expe))
 (define-test vtest (pred?) expr () (do-vtest pred?))
 (define-dtest dtest do-dtest)
-
-(define test-exception-handler
-  (lambda (title k)
-    (lambda (x)
-      (if (missing-condition? x)
-        (k (test title (skip (string-append "no " (symbol->string (missing-export x)))) #f #f))
-        (raise-continuable x)))))
 
 (define do-test
   (lambda (th expected equal? error)
