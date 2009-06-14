@@ -1,7 +1,38 @@
-(import (rnrs) (rnrs eval))
-(define test-library '(minikanren nominal-disequality))
+(import (minikanren nominal-disequality)
+  (rnrs) (rnrs eval))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
+
+(define-condition-type &missing &condition make-missing-condition missing-condition? (export missing-export))
+
+(define-syntax define-missing-exports
+  (lambda (o)
+    (syntax-case o ()
+      ((_ var ...)
+       #`(begin .
+           #,(let rec ((ls #'(var ...)))
+               (cond
+                 ((null? ls) '())
+                 ((call/cc
+                    (lambda (k)
+                      (with-exception-handler
+                        (lambda (x) (k (not (undefined-violation? x))))
+                        (lambda () (eval (syntax->datum (car ls))
+                                     (environment '(minikanren nominal-disequality)))))))
+                  (rec (cdr ls)))
+                 (else
+                   `(,#`(define-syntax #,(car ls)
+                          (lambda (o)
+                            (syntax-case o ()
+                              (_ #'(raise (make-missing-condition '#,(car ls)))))))
+                     . ,(rec (cdr ls)))))))))))
+
+(define-missing-exports
+  run run* run+ conde exist ==
+  fresh hash tie ==-check ==-no-check
+  =/= tabled pa/ir project)
+
+(define-syntax multi (syntax-rules () ((_ x . b) (exist () . b)))) ; multi is deprecated... for now
 
 (define remove-answer
   (lambda (x ls)
@@ -18,8 +49,6 @@
        (answer-set-equal? (cdr ls1) (remove-answer (car ls1) ls2)))
       (else #f))))
 
-(define (void) (if #f #f))
-
 (define skipped-tests
   (let ((ls '()))
     (case-lambda
@@ -30,73 +59,65 @@
   (syntax-rules (nl)
     ((_ nl . x) (begin (newline) (print . x)))
     ((_ x0 . x) (begin (display x0) (print . x)))
-    ((_) (void))))
-
-(define-syntax test-eval
-  (syntax-rules ()
-    ((_ e)
-     (call/cc
-       (lambda (k)
-         (with-exception-handler
-           (lambda (x) (if (undefined-violation? x) (k #f) (raise x)))
-           (lambda () (eval 'e (environment '(rnrs) test-library)))))))))
-
-(define-syntax test-letrec
-  (syntax-rules ()
-    ((_ ((x (lambda fmls . body)) ...) . b*)
-     (letrec ((x (test-eval (lambda fmls . body))) ...)
-       (if (and (procedure? x) ...)
-         (begin . b*)
-         (test '(tests-using x ...) (skip "exports missing") #f #f))))))
+    ((_) (values))))
 
 (define-syntax define-test
   (syntax-rules ()
-    ((_ name (pl ...) expr (pr ...) (do-name th args ...))
+    ((_ name (pl ...) expr (pr ...) (do-name args ...))
      (define-syntax name
        (syntax-rules (skip)
-         ((_ title (skip reason) pl ... expr pr ...) (begin (print "WARNING: SKIPPING " title nl) (skipped-tests (cons title reason))))
+         ((_ title (skip reason) pl ... expr pr ...)
+          (let ((t title) (r reason)) (print "WARNING: SKIPPING " t ": " r nl) (skipped-tests (cons t r))))
          ((_ title skip pl ... expr pr ...) (name title (skip "no reason") pl ... expr pr ...))
          ((_ title pl ... expr pr ...)
-          (let ((th (test-eval (lambda () expr))))
-            (if (procedure? th)
-              (begin
-                (print "Testing " title "...")
-                (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
-                (print " done" nl))
-              (name title (skip "exports missing") #f #f)))))))))
+          (let ((t title))
+            (call/cc
+              (lambda (k)
+                (with-exception-handler
+                  (test-exception-handler t k)
+                  (lambda ()
+                    (let ((th (lambda () expr)))
+                      (print "Testing " t "...")
+                      (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
+                      (print " done" nl)))))))))))))
 
-(define-syntax if-engines
+(define-syntax define-dtest
   (lambda (o)
-    (define engines?
-      (call/cc
-        (lambda (k)
-          (with-exception-handler
-            (lambda (x) (k #f))
-            (lambda () (environment '(scheme)))))))
     (syntax-case o ()
-      ((_ c) #'(if-engines c (void)))
-      ((_ c a) (if engines? #'c #'a)))))
+      ((_ dtest do-dtest)
+       (call/cc
+         (lambda (k)
+           (with-exception-handler
+             (lambda (x) (k #f))
+             (lambda () (environment '(scheme))))))
+       #'(begin
+           (define do-dtest
+             (let ((make-engine (eval 'make-engine (environment '(scheme))))
+                   (max-ticks (exact 1e8)))
+               (lambda (th error)
+                 ((make-engine th)
+                  max-ticks
+                  (lambda (t v) (error "failed to diverge" (- max-ticks t) v))
+                  (lambda (e) (values))))))
+           (define-test dtest () expr () (do-dtest))))
+      ((_ dtest _)
+       #'(define-syntax dtest
+           (syntax-rules ()
+             ((_ title . _) (test title (skip "no engines") #f #f))))))))
 
-(if-engines
-  (define make-engine (eval 'make-engine (environment '(scheme)))))
+(define-test test () expr (expe) (do-test expe equal?))
+(define-test mtest () expr (expe) (do-test expe answer-set-equal?))
+(define-test ptest (passes?) expr () (do-test 'ptest (lambda (e c) (passes? c))))
+(define-test ftest () expr (expe) (do-ftest expe))
+(define-test vtest (pred?) expr () (do-vtest pred?))
+(define-dtest dtest do-dtest)
 
-(if-engines
-  (define-test dtest () expr () (do-dtest th))
-  (define-syntax dtest (syntax-rules () ((_ title x ...) (test title (skip "no engines") #f #f)))))
-(define-test test () expr (expe) (do-test th expe equal?))
-(define-test mtest () expr (expe) (do-test th expe answer-set-equal?))
-(define-test ptest (passes?) expr () (do-test th 'ptest (lambda (e c) (passes? c))))
-(define-test ftest () expr (expe) (do-ftest th expe))
-(define-test vtest (pred?) expr () (do-vtest th pred?))
-
-(if-engines
-  (define do-dtest
-    (lambda (th error)
-      (define max-ticks (exact 1e8))
-      ((make-engine th)
-       max-ticks
-       (lambda (t v) (error "failed to diverge" (- max-ticks t) v))
-       not))))
+(define test-exception-handler
+  (lambda (title k)
+    (lambda (x)
+      (if (missing-condition? x)
+        (k (test title (skip (string-append "no " (symbol->string (missing-export x)))) #f #f))
+        (raise-continuable x)))))
 
 (define do-test
   (lambda (th expected equal? error)
@@ -282,7 +303,7 @@
             (== t u))))
       '())
 
-(test-letrec ((substo
+(letrec ((substo
            (lambda (e new a out)
              (conde
                [(== `(var ,a) e) (== new out)]
@@ -317,7 +338,7 @@
           `(var ,a) b x)))
     '((lam (tie a.0 (var a.1))))))
 
-(test-letrec ((typo
+(letrec ((typo
            (lambda (g e te)
              (conde
                [(exist (x)
@@ -1101,17 +1122,17 @@
     (run+ (q) (listo q)))
   '(() (_.0) (_.0 _.1) (_.0 _.1 _.2) (_.0 _.1 _.2 _.3) (_.0 _.1 _.2 _.3 _.4)))
 
-(test-letrec ((f (tabled (x y) (== x y))))
-  (mtest "simple f"
-    (run* (q) (f 2 q))
-    '(2)))
+(mtest "simple f"
+  (let ((f (tabled (x y) (== x y))))
+    (run* (q) (f 2 q)))
+  '(2))
 
-(test-letrec ((f (tabled (x y) (conde
-                         ((== x y))
-                         ((== x #f))))))
-  (mtest "simple f conde"
-    (run* (q) (f q #t))
-    '(#t #f)))
+(mtest "simple f conde"
+  (let ((f (tabled (x y) (conde
+                           ((== x y))
+                           ((== x #f))))))
+    (run* (q) (f q #t)))
+  '(#t #f))
 
 (test "simple recursion"
   (letrec ((f (tabled (x)
@@ -1178,7 +1199,7 @@
         (== q `(,x ,y)))))
   '((() (cake with ice d t)) ((cake) (with ice d t)) ((cake with) (ice d t)) ((cake with ice) (d t)) ((cake with ice d) (t)) ((cake with ice d t) ())))
 
-(mtest "appendo non-tabled 7 multi"
+(mtest "appendo non-tabled 7 multi" (skip "no true conjunction")
   (letrec
     ((appendo (lambda (l s out)
                 (conde
@@ -1210,7 +1231,7 @@
         (== q `(,x ,y)))))
   '((() (cake with ice d t)) ((cake) (with ice d t)) ((cake with) (ice d t)) ((cake with ice) (d t)) ((cake with ice d) (t)) ((cake with ice d t) ())))
 
-(mtest "appendo gt 7 multi"
+(mtest "appendo gt 7 multi" (skip "no true conjunction")
   (letrec
     ((appendo (tabled (l s out)
                 (conde
@@ -1312,7 +1333,7 @@
     (run* (q) (g '(a b c) q)))
   '((a b c) (b c) (c)))
 
-(mtest "multi-tabled1 small0"
+(mtest "multi-tabled1 small0" (skip "no true conjunction")
   (letrec
     ((g (tabled (x y)
           (conde
@@ -1325,7 +1346,7 @@
       (g '(a) q)))
   '((a) ()))
 
-(mtest "multi-non-tabled1 small1"
+(mtest "multi-non-tabled1 small1" (skip "no true conjunction")
   (letrec
     ((g (lambda (x y)
           (conde
@@ -1337,7 +1358,7 @@
     (run* (q) (g '(a b) q)))
   '((a b) (b) ()))
 
-(mtest "multi-tabled1 small1 doublea"
+(mtest "multi-tabled1 small1 doublea" (skip "no true conjunction")
   (letrec
     ((g (tabled (x y)
           (conde
@@ -1363,7 +1384,7 @@
       (g '(a b) q)))
   '((a b) (b) ()))
 
-(mtest "multi-tabled1 small1"
+(mtest "multi-tabled1 small1" (skip "no true conjunction")
   (letrec
     ((g (tabled (x y)
           (conde
@@ -1376,7 +1397,7 @@
       (g '(a b) q)))
   '((a b) (b) ()))
 
-(mtest "multi mutual recursion tabled 1"
+(mtest "multi mutual recursion tabled 1" (skip "no true conjunction")
   (letrec
     ((f (tabled (x y)
           (conde
@@ -1395,7 +1416,7 @@
     (run* (q) (f '(a a b) q)))
   '((a b) ()))
 
-(mtest "multi-tabled1"
+(mtest "multi-tabled1" (skip "no true conjunction")
   (letrec
     ((g (tabled (x y)
           (conde
@@ -1437,7 +1458,7 @@ it can be avoided with tabling as long as the argument list doesn't change
     (== #f #t))
   '())
 
-(test-letrec
+(letrec
   ((one-step
      (lambda (n x)
        (conde
@@ -1451,7 +1472,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== `(,x ,y) q)))
     '((0 10) (0 11) (1 10) (0 12) (0 13) (2 10) (3 10)))
 
-  (mtest "-multi2"
+  (mtest "-multi2" (skip "no true conjunction")
     (run 5 (q)
       (exist (x y)
         (one-step 0 x)
@@ -1460,7 +1481,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== `(,x ,y) q)))
     '())
 
-  (mtest "multi2"
+  (mtest "multi2" (skip "no true conjunction")
     (run 5 (q)
       (exist (x y)
         (multi () (multi (x y) (one-step 0 x) (one-step 10 y)) (== #f #t))
@@ -1474,14 +1495,14 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== `(,x ,y) q)))
     '())
 
-  (mtest "multi4"
+  (mtest "multi4" (skip "no true conjunction")
     (run 5 (q)
       (exist (x y)
         (multi (x) (one-step 0 x) (multi (y) (one-step 10 y) (== #f #t) ))
         (== `(,x ,y) q)))
     '()))
 
-(test-letrec
+(letrec
   ((alwayso
      (lambda (g)
        (conde
@@ -1490,20 +1511,20 @@ it can be avoided with tabling as long as the argument list doesn't change
    (will-failo
      (lambda ()
        (== #f #t))))
-  (mtest "multi5" 
+  (mtest "multi5" (skip "no true conjunction")
     (run 5 (q)
       (multi ()
         (alwayso (== #f #f))
         (will-failo)))
     '()))
 
-(test-letrec ((g (tabled (x y) (multi (x y) (== x 5) (== y 6)))))
-  (mtest "multi-dup0"
+(mtest "multi-dup0"
+  (letrec ((g (tabled (x y) (multi (x y) (== x 5) (== y 6)))))
     (run* (q)
       (exist (x y)
         (== q `(,x ,y))
-        (g x y)))
-    '((5 6))))
+        (g x y))))
+  '((5 6)))
 
 (mtest "multi-dup1"
   (run* (q)
@@ -1544,7 +1565,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (g '(a b c d e) q)))
   '((a b c d e) (b c d e) (c d e) (d e) (e) ()))
 
-(mtest "multi-tails"
+(mtest "multi-tails" (skip "no true conjunction")
   (letrec
     ((g (lambda (x y)
           (conde
@@ -2761,7 +2782,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (== (cons x (cons y (cons 'soup '()))) r)))
   `((split pea soup) (navy bean soup)))
 
-(test-letrec ((teacupo
+(letrec ((teacupo
         (lambda (x)
           (conde
             ((== 'tea x) (== #f #f))
@@ -2838,7 +2859,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (== (let ((x v) (y w)) `(,x ,y)) r)))
   `((_.0 _.1)))
 
-(test-letrec ((caro (lambda (p a)
+(letrec ((caro (lambda (p a)
               (exist (d)
                 (== (cons a d) p)))))
 
@@ -2878,7 +2899,7 @@ it can be avoided with tabling as long as the argument list doesn't change
     (cdr `(grape raisin pear))
     `(raisin pear))
 
-(test-letrec ((cdro (lambda (p d)
+(letrec ((cdro (lambda (p d)
               (exist (a)
                 (== (cons a d) p)))))
 
@@ -2916,7 +2937,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== 'a x)))
     (list `(a c o r n)))
 
-(test-letrec ((conso (lambda (a d p) (== (cons a d) p))))
+(letrec ((conso (lambda (a d p) (== (cons a d) p))))
 
   (mtest "testc12.tex-23" 
     (run* (l)
@@ -2966,7 +2987,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== 'e y)))
     (list `(b e a n s)))
 
-(test-letrec ((nullo (lambda (x) (== '() x))))
+(letrec ((nullo (lambda (x) (== '() x))))
 
   (mtest "testc12.tex-34" 
     (run* (q)
@@ -2985,7 +3006,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (nullo x))
     `(()))
 
-(test-letrec ((eqo (lambda (x y) (== x y))))
+(letrec ((eqo (lambda (x y) (== x y))))
 
   (mtest "testc12.tex-39" 
     (run* (q)
@@ -3005,7 +3026,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== (cons x (cons y 'salad)) r)))
     (list `(_.0 _.1 . salad)))
 
-(test-letrec ((pairo (lambda (p)
+(letrec ((pairo (lambda (p)
                (exist (a d)
                  (conso a d p)))))
 
@@ -3037,7 +3058,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (pairo (cons r 'pear)))
     (list `_.0))
 
-(test-letrec
+(letrec
   ((listo
      (lambda (l)
        (conde
@@ -3072,7 +3093,7 @@ it can be avoided with tabling as long as the argument list doesn't change
     (_.0 _.1 _.2)
     (_.0 _.1 _.2 _.3)))
 
-  (test-letrec
+  (letrec
     ((lolo (lambda (l)
              (conde
                ((nullo l) (== #f #f))
@@ -3116,7 +3137,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (() ())
         ((_.0 _.1)))))
 
-  (test-letrec ((twinso
+  (letrec ((twinso
           (lambda (s)
             (exist (x y)
               (conso x y s)
@@ -3134,7 +3155,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (twinso `(,z tofu)))
       (list `tofu))
 
-    (test-letrec
+    (letrec
       ((loto
          (lambda (l)
            (conde
@@ -3181,7 +3202,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           ((g g) (e e) (_.0 _.0) (_.1 _.1) (_.2 _.2)))))
 
 
-    (test-letrec
+    (letrec
       ((listofo
          (lambda (predo l)
            (conde
@@ -3202,7 +3223,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           ((g g) (e e) (_.0 _.0) (_.1 _.1))
           ((g g) (e e) (_.0 _.0) (_.1 _.1) (_.2 _.2)))))))
 
-  (test-letrec
+  (letrec
     ((membero
        (lambda (x l)
          (conde
@@ -3291,7 +3312,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (_.0 _.1 _.2 tofu . _.3)
         (_.0 _.1 _.2 _.3 tofu . _.4))))
 
-  (test-letrec
+  (letrec
     ((pmembero
        (lambda (x l)
          (conde
@@ -3315,7 +3336,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== #t q))
       `(#t)))
 
-  (test-letrec
+  (letrec
     ((pmembero
        (lambda (x l)
          (conde
@@ -3333,7 +3354,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== #t q))
       `(#t #t #t)))
 
-  (test-letrec
+  (letrec
     ((pmembero
        (lambda (x l)
          (conde
@@ -3368,7 +3389,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (_.0 _.1 _.2 _.3 _.4 tofu)
         (_.0 _.1 _.2 _.3 _.4 tofu _.5 . _.6))))
 
-  (test-letrec
+  (letrec
     ((memo
        (lambda (x l out)
          (conde
@@ -3440,7 +3461,7 @@ it can be avoided with tabling as long as the argument list doesn't change
          (_.0 _.1 _.2 _.3 _.4 _.5 _.6 _.7 tofu . _.8)
          (_.0 _.1 _.2 _.3 _.4 _.5 _.6 _.7 _.8 tofu . _.9))))
 
-  (test-letrec
+  (letrec
     ((rembero
        (lambda (x l out)
          (conde
@@ -3518,7 +3539,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           (surpriseo r))
         `(b))))
 
-  (test-letrec
+  (letrec
     ((appendo
        (lambda (l s out)
          (conde
@@ -3567,7 +3588,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           (appendo `(cake with ice . ,y) '(d t) x)))
       (list '())))
 
-(test-letrec
+(letrec
   ((appendo
      (lambda (l s out)
        (conde
@@ -3641,7 +3662,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (t)
       ()))
 
-  (test-letrec ((appendxyquestion
+  (letrec ((appendxyquestion
         (lambda ()
           (run+ (r)
             (exist (x y)
@@ -3664,7 +3685,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (appendo x y `(cake with ice d t))
         (== `(,x ,y) r))))
 
-  (test-letrec
+  (letrec
     ((appendo
        (lambda (l s out)
          (conde
@@ -3725,7 +3746,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         ((_.0 _.1 _.2 _.3 _.4) _.5 (_.0 _.1 _.2 _.3 _.4 . _.5))
         ((_.0 _.1 _.2 _.3 _.4 _.5) _.6 (_.0 _.1 _.2 _.3 _.4 _.5 . _.6))))))
 
-  (test-letrec
+  (letrec
     ((flatteno
        (lambda (s out)
          (conde
@@ -3803,7 +3824,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (a () ())
         (a () () ())))
     
-    (test-letrec ((flattenogrumblequestion
+    (letrec ((flattenogrumblequestion
             (lambda ()
               (run* (x)
                 (flatteno '((a b) c) x))))
@@ -3836,7 +3857,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           (flatteno '((((a (((b))) c))) d) x)))
       574)))
 
-  (test-letrec
+  (letrec
     ((swappendo
        (lambda (l s out)
          (conde
@@ -3859,7 +3880,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         ((_.0 _.1 _.2 _.3 _.4) _.5 (_.0 _.1 _.2 _.3 _.4 . _.5))
         ((_.0 _.1 _.2 _.3 _.4 _.5) _.6 (_.0 _.1 _.2 _.3 _.4 _.5 . _.6)))))
 
-  (test-letrec
+  (letrec
     ((unwrapo
        (lambda (x out)
          (conde
@@ -3914,7 +3935,7 @@ it can be avoided with tabling as long as the argument list doesn't change
          (((pizza . _.0) . _.1) . _.2)
          ((((pizza . _.0) . _.1) . _.2) . _.3))))
 
-  (test-letrec ((strangeo (exist () strangeo)))
+  (letrec ((strangeo (exist () strangeo)))
     (dtest "testc17.tex-1"
       (run 1 (x) strangeo))
 
@@ -3925,7 +3946,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           ((== #f #f))))
       `(_.0)))
 
-  (test-letrec ((strangero
+  (letrec ((strangero
              (conde 
                (strangero (conde 
                             (strangero) 
@@ -3937,7 +3958,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         strangero)
       `(_.0 _.0 _.0 _.0 _.0)))
 
-  (test-letrec
+  (letrec
     ((strangesto
        (lambda (x y)
          (conde
@@ -3951,7 +3972,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           (== `(,x ,y) q)))
       `((#f _.0) (_.0 #f) (#f #f) (#f #f) (#f #f))))
 
-  (test-letrec
+  (letrec
     ((any* (lambda (g)
              (conde
                (g)
@@ -3987,7 +4008,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           always)
         `(#t #t #t #t #t))
 
-      (test-letrec ((salo
+      (letrec ((salo
               (lambda (g)
                 (conde
                   ((== #f #f))
@@ -4082,7 +4103,7 @@ it can be avoided with tabling as long as the argument list doesn't change
             always)                                           
           (== #t q))
         `(#t #t #t #t #t)))
-  (test-letrec
+  (letrec
     ((bit-xoro
        (lambda (x y r)
          (conde
@@ -4131,7 +4152,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (== `(,x ,y) s)))  
     `((1 1)))
 
-    (test-letrec
+    (letrec
       ((half-addero
          (lambda (x y r c)
            (exist ()
@@ -4153,7 +4174,7 @@ it can be avoided with tabling as long as the argument list doesn't change
           (1 0 1 0)
           (1 1 0 1)))
 
-      (test-letrec
+      (letrec
         ((full-addero
            (lambda (b x y r c)
              (exist (w xy wz)
@@ -4168,7 +4189,7 @@ it can be avoided with tabling as long as the argument list doesn't change
               (== `(,r ,c) s)))
           (list `(0 1))))))
 
-  (test-letrec
+  (letrec
     ((full-addero
        (lambda (b x y r c)
          (conde
@@ -4202,7 +4223,7 @@ it can be avoided with tabling as long as the argument list doesn't change
         (0 1 1 0 1)
         (1 1 1 1 1)))
     
-(test-letrec
+(letrec
   ((poso
      (lambda (n)
        (exist (a d)
@@ -4231,7 +4252,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (poso r))
     (list `(_.0 . _.1)))
   
-  (test-letrec ((>1o
+  (letrec ((>1o
           (lambda (n)
             (exist (a ad dd)
               (== `(,a ,ad . ,dd) n)))))
@@ -4266,7 +4287,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (list 
         `(_.0 _.1 . _.2)))
     
-    (test-letrec
+    (letrec
       ((addero
          (lambda (d n m r)
            (conde
@@ -4363,7 +4384,7 @@ it can be avoided with tabling as long as the argument list doesn't change
             ((0 1) (1 1))))
 
         (let ((minuso (lambda (n m k) (pluso m k n))))
-          (test-letrec ((bumpo
+          (letrec ((bumpo
                      (lambda (n x)
                        (conde
                          ((== n x) (== #f #f))
@@ -4397,7 +4418,7 @@ it can be avoided with tabling as long as the argument list doesn't change
               (minuso '(0 1 1) '(0 0 0 1) q))
             `())
           
-          (test-letrec
+          (letrec
             ((*o (lambda (n m p)
                    (conde
                      ((== '() n) (== '() p))
@@ -4435,7 +4456,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                   (*o n m '(1))
                   (== `(,n ,m) t)))))
 
-          (test-letrec
+          (letrec
             ((*o
                (lambda (n m p)
                  (conde
@@ -4536,7 +4557,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                 (*o '(1 1 1) '(1 1 1 1 1 1) p))
               (list `(1 0 0 1 1 1 0 1 1)))
 
-            (test-letrec
+            (letrec
               ((=lo
                  (lambda (n m)
                    (conde
@@ -4597,7 +4618,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                   ((_.0 _.1 _.2 _.3 _.4 _.5 1) (_.6 _.7 1))
                   ((_.0 _.1 _.2 _.3 _.4 _.5 _.6 1) (_.7 _.8 _.9 1))))
 
-              (test-letrec ((<lo
+              (letrec ((<lo
                          (lambda (n m)
                            (conde
                              ((== '() n) (poso m))
@@ -4625,7 +4646,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                   (run 1 (n)
                     (<lo n n)))
 
-                (test-letrec ((<=lo
+                (letrec ((<=lo
                         (lambda (n m)
                           (conde
                             ((=lo n m))
@@ -4691,7 +4712,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                       ((_.0 _.1 _.2 _.3 _.4 _.5 1) (_.6 _.7 _.8 _.9 _.10 _.11 1))
                       ((_.0 _.1 _.2 _.3 _.4 1) (_.5 _.6 _.7 _.8 _.9 _.10 _.11 . _.12))))
                   
-                (test-letrec ((<o
+                (letrec ((<o
                            (lambda (n m)
                              (conde
                                ((<lo n m))
@@ -4744,7 +4765,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                     (run* (n)
                       (<o n n)))
 
-                  (test-letrec ((/o
+                  (letrec ((/o
                     (lambda (n m q r)
                       (conde
                         ((== '() q) (== n r) (<o n m))
@@ -4765,7 +4786,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                     (dtest "testc23.tex-/otest1"
                       (/otest1)))
 
-                  (test-letrec
+                  (letrec
                     ((/o
                        (lambda (n m q r)
                          (conde
@@ -4833,7 +4854,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                         ((_.0 _.1 _.2 1) (_.3 _.4 _.5 _.6 _.7 . _.8) () (_.0 _.1 _.2 1))
                         ((_.0 _.1 _.2 _.3 1) (_.4 _.5 _.6 _.7 _.8 _.9 . _.10) () (_.0 _.1 _.2 _.3 1))))
 
-                    (test-letrec
+                    (letrec
                       ((appendo
                          (lambda (l s out)
                            (conde
@@ -4950,7 +4971,7 @@ it can be avoided with tabling as long as the argument list doesn't change
                       
                       )))))))))))))))))))
 
-(test-letrec ((proof-that-exist-needs-an-inc
+(letrec ((proof-that-exist-needs-an-inc
            (exist ()
              (proof-that-exist-needs-an-inc))))
   (mtest 'proof-that-run-needs-an-inc
@@ -5041,7 +5062,8 @@ it can be avoided with tabling as long as the argument list doesn't change
       (==-check x y)))
   `())
 
-(print "DONE" nl "SKIPPED: " (skipped-tests) nl) #!eof
+#!eof
+;(print "DONE" nl "SKIPPED: " (skipped-tests) nl) #!eof
 
 (mtest "bobo0" (skip "subsumption")
   (letrec
