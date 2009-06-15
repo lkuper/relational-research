@@ -1,4 +1,4 @@
-(library (minikanren vanilla)
+(library (minikanren vanilla-unsound)
   (export run run* run+ conde exist == ==-no-check)
   (import (rnrs) (rnrs records syntactic))
 

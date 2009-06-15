@@ -1,4 +1,4 @@
-(import (minikanren <test me>)
+(import (minikanren disequality)
   (rnrs) (rnrs eval))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
@@ -65,13 +65,15 @@
      (define-syntax name
        (syntax-rules (skip)
          ((_ title (skip reason) pl ... expr pr ...)
-          (let ((t title) (r reason)) (print "WARNING: SKIPPING " t ": " r nl) (skipped-tests (cons t r))))
+          (let ((t title) (r reason)) (print "SKIPPING " t ": " r nl) (skipped-tests (cons t r))))
          ((_ title skip pl ... expr pr ...) (name title (skip "no reason") pl ... expr pr ...))
          ((_ title pl ... expr pr ...)
           (let ((t title))
             (guard (con
                      ((string? con)
-                      (test title (skip (string-append "no " con)) #f #f)))
+                      (let ((r (string-append "no " con)))
+                        (print " SKIPPING: " r nl)
+                        (skipped-tests (cons t r)))))
               (let ((th (lambda () expr)))
                 (print "Testing " t "...")
                 (do-name th args ... (lambda (string . irr) (apply error 'title string 'expr irr)))
