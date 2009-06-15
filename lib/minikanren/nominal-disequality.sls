@@ -1,5 +1,5 @@
 (library (minikanren nominal-disequality)
-  (export run run* conde exist fresh hash =/= == ==-check (rename (make-tie tie)))
+  (export run run* run+ conde exist fresh hash =/= == ==-check (rename (make-tie tie)))
   (import (rnrs))
 
   (define-syntax lambdaf@ (syntax-rules () ((_ () e) (lambda () e))))
@@ -61,6 +61,7 @@
       (let rec ((t t))
         (cond
           ((nom? t) (api pi t))
+          ((and (var? t) (null? pi)) t) ; for reification
           ((sus? t) (make-sus (compose-pis pi (sus-pi t)) (sus-v t)))
           ((tie? t) (make-tie (api pi (tie-a t)) (rec (tie-t t))))
           ((pair? t) `(,(rec (car t)) . ,(rec (cdr t))))
@@ -348,7 +349,8 @@
     (lambda (p c*)
       (and (pair? c*)
         (or (let ((p^ (unify-c (car c*) p)))
-              (and (eq? (p-s p^) (p-s p))
+              (and p^
+                (eq? (p-s p^) (p-s p))
                 (null? (h*-extension (p-h* p^) (p-h* p)))))
           (subsumed-c*? p (cdr c*))))))
 

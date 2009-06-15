@@ -3,7 +3,7 @@
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
 
-(define-syntax define-missing-exports
+(define-syntax define-syntax-when-unbound
   (lambda (o)
     (define unbound?
       (let ((empty-ctxt (car (generate-temporaries '(t)))))
@@ -11,19 +11,18 @@
           (let ((unbound-id (datum->syntax empty-ctxt (syntax->datum id))))
             (free-identifier=? id unbound-id)))))
     (syntax-case o ()
-      ((_ id ...)
-       #`(begin .
-           #,(let rec ((ls #'(id ...)))
-               (cond
-                 ((null? ls) '())
-                 ((unbound? (car ls))
-                  (cons
-                    #`(define-syntax #,(car ls)
-                        (lambda (o)
-                          (syntax-case o ()
-                            (_ #'(raise (symbol->string '#,(car ls)))))))
-                    (rec (cdr ls))))
-                 (else (rec (cdr ls))))))))))
+      ((_ id e)
+       (if (unbound? #'id)
+         #'(define-syntax id e)
+         #'(begin))))))
+
+(define-syntax define-missing-exports
+  (syntax-rules ()
+    ((_ id* ...)
+     (begin
+       (define-syntax-when-unbound id*
+         (lambda (_) #'(raise (symbol->string 'id*))))
+       ...))))
 
 (define-missing-exports
   run run* run+ conde exist ==
@@ -98,12 +97,6 @@
        #'(define-syntax dtest
            (syntax-rules ()
              ((_ title . _) (test title (skip "no engines") #f #f))))))))
-
-(define-test test () expr (expe) (do-test expe equal?))
-(define-test mtest () expr (expe) (do-test expe answer-set-equal?))
-(define-test ptest (passes?) expr () (do-test 'ptest (lambda (e c) (passes? c))))
-(define-test ftest () expr (expe) (do-ftest expe))
-(define-test vtest (pred?) expr () (do-vtest pred?))
 (define-dtest dtest do-dtest)
 
 (define do-test
@@ -113,6 +106,9 @@
         (print nl "expected: " expected)
         (print nl "computed: " computed nl)
         (error "failed")))))
+(define-test test () expr (expe) (do-test expe equal?))
+(define-test mtest () expr (expe) (do-test expe answer-set-equal?))
+(define-test ptest (passes?) expr () (do-test 'ptest (lambda (e c) (passes? c))))
 
 (define do-ftest
   (lambda (th expe error)
@@ -122,6 +118,7 @@
           ((null? p) (error "failed to produce answers" expe))
           ((member (car p) expe) (do-ftest (cdr p) (remove-answer (car p) expe) error))
           (else (do-ftest (cdr p) expe error)))))))
+(define-test ftest () expr (expe) (do-ftest expe))
 
 (define do-vtest
   (lambda (th pred? error)
@@ -130,6 +127,7 @@
         ((pred? con))
         (else (error "failed to produce appropriate error" con)))
       (begin (th) (error "no error")))))
+(define-test vtest (pred?) expr () (do-vtest pred?))
 
 (test 'tied-pair1
   (run* (q)
