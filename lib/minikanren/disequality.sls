@@ -92,14 +92,14 @@
 
   (define verify-c*
     (lambda (c* s)
-      (let rec ((c* c*) (a '()))
+      (let rec ((c* c*))
         (cond
-          ((null? c*) a)
+          ((null? c*) '())
           ((unify-c (car c*) s)
            => (lambda (s^)
                 (let ((c (s-extension s^ s)))
-                  (and (pair? c) (rec (cdr c*) `(,c . ,a))))))
-          (else (rec (cdr c*) a))))))
+                  (and (pair? c) `(,c . ,(rec (cdr c*)))))))
+          (else (rec (cdr c*)))))))
 
   (define unify-c
     (lambda (c s)

@@ -1,4 +1,4 @@
-(import (minikanren disequality)
+(import (minikanren nominal-disequality)
   (rnrs) (rnrs eval))
 
 #| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#

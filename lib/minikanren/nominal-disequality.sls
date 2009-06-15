@@ -168,21 +168,26 @@
   (define verify-c*
     (lambda (p)
       (let rec ((c* (p-c* p)))
-        (if (null? c*) '()
-          (let ((c (update-c (car c*) p)))
-            (and c `(,c . ,(rec (cdr c*)))))))))
+        (cond
+          ((null? c*) '())
+          ((unify-c (car c*) p)
+           => (lambda (p^)
+                (let ((!s^ (s-extension (p-s p^) (p-s p)))
+                      (!h*^ (verify-h*
+                              (h*-union
+                                (h*-extension (p-h* p^) (p-h* p))
+                                (c-h* (car c*)))
+                              (p-s p))))
+                  (and !h*^
+                    (or (pair? !s^) (pair? !h*^))
+                    `(,(make-c !s^ !h*^) .
+                      ,(rec (cdr c*)))))))
+          (else (rec (cdr c*)))))))
 
-  (define update-c
-    (lambda (c p0)
-      (let rec ((!s (c-s c)) (p p0))
-        (if (null? !s) 
-          (let ((!s^ (s-extension (p-s p) (p-s p0)))
-                (!h*^ (verify-h*
-                        (h*-union (h*-extension (p-h* p) (p-h* p0)) (c-h* c))
-                        (p-s p0))))
-            (and !h*^
-              (or (pair? !s^) (pair? !h*^))
-              (make-c !s^ !h*^)))
+  (define unify-c
+    (lambda (c p)
+      (let rec ((!s (c-s c)) (p p))
+        (if (null? !s) p
           (let ((p (nominal-unify (caar !s) (cdar !s) p)))
             (and p (rec (cdr !s) p)))))))
 
@@ -318,33 +323,46 @@
   (define remove-subsumed-c*
     (lambda (c*)
       (let rec ((c* c*) (a '()))
-        (if (null? c*) a
-          (rec (cdr c*)
-            (if (or
-                  (subsumed-c*? (car c*) a)
-                  (subsumed-c*? (car c*) (cdr c*)))
-              a
-              `(,(car c*) . ,a)))))))
+        (cond
+          ((null? c*) a)
+          ((let* ((c (car c*))
+                  (p (make-p (c-s c) (c-h* c) '())))
+             (or
+               (subsumed-c*? p (cdr c*))
+               (subsumed-c*? p a)))
+           (rec (cdr c*) a))
+          (else (rec (cdr c*) `(,(car c*) . ,a)))))))
+
+  ; want to know whether c is unnecessary given c*
+  ; c contains bindings and freshness constraints that should never be simultaneously all satisfied.
+  ; if there is a c1 in c* such that
+  ;   if you assume c's contents are satisfied
+  ;   then c1's contents are also satisfied
+  ; then c is unnecessary given c*
+  ; because:
+  ; c1 has some subsets of c's bindings and freshnesses
+  ; so asserting that c1 should not be satisfied implies c should not be satisfied
+  ; (c sat => c1 sat) => (c1 not sat => c not sat)
 
   (define subsumed-c*?
-    (lambda (c c*)
-      ; want to know whether c is unnecessary given c*
-      ; c contains bindings and freshness constraints that should never be simultaneously all satisfied.
-      ; if there is a c1 in c* such that
-      ;   if you assume c's contents are satisfied
-      ;   then c1's contents are also satisfied
-      ; then c is unnecessary given c*
-      ; because:
-      ; c1 has some subsets of c's bindings and freshnesses
-      ; so asserting that c1 should not be satisfied implies c should not be satisfied
-      ; (c sat => c1 sat) => (c1 not sat => c not sat)
+    (lambda (p c*)
       (and (pair? c*)
-        (or (satisfied-c? (car c*) c)
-          (subsumed-c*? c (cdr c*))))))
+        (or (let ((p^ (unify-c (car c*) p)))
+              (and (eq? (p-s p^) (p-s p))
+                (null? (h*-extension (p-h* p^) (p-h* p)))))
+          (subsumed-c*? p (cdr c*))))))
 
-  (define satisfied-c?
-    (lambda (c1 c)
-      (not (update-c c1 (make-p (c-s c) (c-h* c) '())))))
+  (define strip-c*
+    (lambda (c*)
+      (fold-right
+        (lambda (c c*)
+          (let ((s (c-s c)) (h* (c-h* c)))
+            (cond
+              ((and (null? s) (null? h*)) c*)
+              ((null? s) `((hash . ,h*) . ,c*))
+              ((null? h*) `(,s . ,c*))
+              (else `((,s (hash . ,h*)) . ,c*)))))
+        '() c*)))
 
   (define rwalk
     (lambda (t s)
@@ -396,11 +414,16 @@
           (let ((r (reifying-s v)))
             (let ((v (walk* v r))
                   (h* (reify-h* (p-h* p) r))
-                  (c* (walk*
-                        (remove-subsumed-c*
-                          (purify-c* (walk* (p-c* p) (p-s p))
-                            r))
-                        r)))
+                  (c* (strip-c*
+                        (walk*
+                          (remove-subsumed-c*
+                            ; INCORRECT TYPES
+                            ; walk* takes a term
+                            ; but a c* is not a term
+                            ; because it contains vars
+                            (purify-c* (walk* (p-c* p) (p-s p))
+                              r))
+                          r))))
               `(,(if (or (pair? h*) (pair? c*))
                    `(,v
                      ,@(if (pair? h*) `((hash . ,h*)) '())
@@ -430,3 +453,4 @@
                                 (cdr h))))
                          r)
           (rec (cdr h*) (ins (caar h*) (cdar h*) r)))))))
+(import (minikanren nominal-disequality))
