@@ -1,7 +1,5 @@
-(import (minikanren nominal-disequality)
+(import (minikanren vanilla-unsound)
   (rnrs) (rnrs eval))
-
-#| look for more tests in files in /home/ramana/fmk and /home/ramana/Papers/* |#
 
 (define-syntax define-syntax-when-unbound
   (lambda (o)
@@ -31,6 +29,12 @@
 
 (define-syntax multi (syntax-rules () ((_ x . b) (exist () . b)))) ; multi is deprecated... for now
 
+(define-syntax print
+  (syntax-rules (nl)
+    ((_ nl . x) (begin (newline) (print . x)))
+    ((_ x0 . x) (begin (display x0) (print . x)))
+    ((_) (values))))
+
 (define remove-answer
   (lambda (x ls)
     (cond
@@ -52,11 +56,16 @@
       (() ls)
       ((t) (set! ls (cons t ls))))))
 
-(define-syntax print
-  (syntax-rules (nl)
-    ((_ nl . x) (begin (newline) (print . x)))
-    ((_ x0 . x) (begin (display x0) (print . x)))
-    ((_) (values))))
+(define print-skipped-reasons
+  (lambda ()
+    (print "reasons for skipped tests:")
+    (let rec ((s* (skipped-tests)) (r* '()))
+      (when (pair? s*)
+        (cond
+          ((member (cdar s*) r*) (rec (cdr s*) r*))
+          (else (print nl (cdar s*))
+            (rec (cdr s*) `(,(cdar s*) . ,r*))))))
+    (print nl)))
 
 (define-syntax define-test
   (syntax-rules ()
@@ -128,6 +137,971 @@
         (else (error "failed to produce appropriate error" con)))
       (begin (th) (error "no error")))))
 (define-test vtest (pred?) expr () (do-vtest pred?))
+
+(test "ccl-hard" (skip "no true conjunction")
+  (run* (q)
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #t)) ((l)))))
+  '())
+
+(test "ccl0" (skip "no true conjunction")
+  (run* (q)
+    (let l () (conde ((let l () (conde ((== #f #f)) ((l))))) ((l))))
+    (== #f #t))
+  '())
+
+(test "ccl1" (skip "no true conjunction")
+  (run* (q)
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (let l () (conde ((== #f #f)) ((l))))
+    (== #f #t))
+  '())
+
+(test "ccl2" (skip "no true conjunction")
+  (run* (q)
+    (let l ()
+      (conde
+        ((== #f #f))
+        ((l))))
+    (== #f #t))
+  '())
+
+(mtest 'nomnumb1 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c d)
+      (exist (x y)
+        (== (tie b (tie d y)) (tie a (tie c x)))
+        (== q `(,a ,b ,c ,d ,x ,y)))))
+  '(((a.0 a.1 a.2 a.3 _.0 (sus ((a.0 . a.1) (a.2 . a.3)) _.0)) (hash (a.1 _.0) (a.3 _.0)))))
+
+(mtest 'nomnumb0 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c d)
+      (exist (x y)
+        (== (tie a (tie c x)) (tie b (tie d y)))
+        (== q `(,a ,b ,c ,d ,x ,y)))))
+  '(((a.0 a.1 a.2 a.3 _.0 (sus ((a.0 . a.1) (a.2 . a.3)) _.0)) (hash (a.1 _.0) (a.3 _.0)))))
+
+(letrec ((substo
+           (lambda (e new a out)
+             (conde
+               [(== `(var ,a) e) (== new out)]
+               [(exist (y)
+                  (== `(var ,y) e)
+                  (== `(var ,y) out)
+                  (hash a y))]
+               [(exist (rator ratorres rand randres)
+                  (== `(app ,rator ,rand) e)
+                  (== `(app ,ratorres ,randres) out)
+                  (substo rator new a ratorres)
+                  (substo rand new a randres))]
+               [(exist (body bodyres)
+                  (fresh (c)
+                    (== `(lam ,(tie c body)) e)
+                    (== `(lam ,(tie c bodyres)) out)
+                    (hash c a)
+                    (hash c new)
+                    (substo body new a bodyres)))]))))
+
+  (mtest 'substo1
+    (run* (q)
+      (fresh (a b)
+        (substo `(lam ,(tie a `(app (var ,a) (var ,b))))
+          `(var ,b) a q)))
+    '((lam (tie a.0 (app (var a.0) (var a.1))))))
+
+ (mtest 'substo1b
+   (run* (q)
+     (exist (x)
+       (fresh (a b)
+         (substo `(lam ,(tie a `(app (var ,a) (var ,b))))
+           `(var ,b) a x)
+         (== `(,x ,a ,b) q))))
+   '(((lam (tie a.0 (app (var a.0) (var a.1)))) a.2 a.1)))
+
+ (mtest 'substo1c (skip "no nominal reification")
+   (run* (q)
+     (exist (x t)
+       (fresh (a b)
+         (== `(lam ,(tie a `(app (var ,a) (var ,b)))) t)
+         (substo t
+           `(var ,b) a x)
+         (== `(,t ,t ,x ,t ,a ,b ,t ,x) q))))
+   '(((lam (tie a.0 (app (var a.0) (var a.1))))
+      (lam (tie a.0 (app (var a.0) (var a.1))))
+      (lam (tie a.0 (app (var a.0) (var a.1))))
+      (lam (tie a.0 (app (var a.0) (var a.1))))
+      a.2
+      a.1
+      (lam (tie a.0 (app (var a.0) (var a.1))))
+      (lam (tie a.0 (app (var a.0) (var a.1)))))))
+
+ (mtest 'substo2
+   (run* (x)
+     (fresh (a b)
+       (substo `(lam ,(tie a `(var ,b)))
+         `(var ,a) b x)))
+   '((lam (tie a.0 (var a.1)))))
+
+ (mtest 'substo2b
+   (run* (q)
+     (exist (x)
+       (fresh (a b)
+         (substo `(lam ,(tie a `(var ,b)))
+           `(var ,a) b x)
+         (== `(,x ,a ,b) q))))
+   '(((lam (tie a.0 (var a.1))) a.1 a.2)))
+
+ (mtest 'substo2c (skip "no nominal reification")
+   (run* (q)
+     (exist (x t)
+       (fresh (a b)
+         (== `(lam ,(tie a `(var ,b))) t)
+         (substo t
+           `(var ,a) b x)
+         (== `(,t ,t ,x ,t ,a ,b ,t ,x) q))))
+   '(((lam (tie a.0 (var a.1)))
+      (lam (tie a.0 (var a.1)))
+      (lam (tie a.0 (var a.2)))
+      (lam (tie a.0 (var a.1)))
+      a.2
+      a.1
+      (lam (tie a.0 (var a.1)))
+      (lam (tie a.0 (var a.2)))))))
+
+(mtest 'acab-0
+  (run* (q)
+    (fresh (a b c)
+      (== (tie b (tie c b)) (tie a (tie b a)))))
+  '(_.0))
+
+(mtest 'acab-1
+  (run* (q)
+    (fresh (a b c)
+      (== q a)
+      (== (tie b (tie c b)) (tie a (tie b q)))))
+  '(a.0))
+
+(mtest 'acab-2
+  (run* (q)
+    (fresh (a b c)
+      (== (tie b (tie c b)) (tie a (tie b q)))
+      (== q a)))
+  '(a.0))
+
+(mtest 'acab-3
+  (run* (q)
+    (fresh (a b c)
+      (== (tie b (tie c b)) (tie a (tie b q)))))
+  '(a.0))
+
+(mtest 'acab-0b (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b c)
+     (exist (t u)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b a)) u)
+       (== t u)
+       (== `(,a ,b ,c ,t ,u) q))))
+ '((a.0 a.1 a.2 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-0c (skip "no nominal reification")
+ (run* (q)
+   (exist (t u)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b a)) u)
+       (== t u)
+       (== `(,a ,b ,c ,t ,u) q))))
+ '((a.0 a.1 a.2 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-0d (skip "no nominal reification")
+ (run* (q)
+   (exist (t u)
+     (fresh (a b c)
+       (== t u)
+       (== `(,a ,b ,c ,t ,u) q)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b a)) u))))
+ '((a.0 a.1 a.2 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-0e (skip "no nominal reification")
+ (run* (q)
+   (exist (t u)
+     (fresh (a b c)
+       (== t u)
+       (== (tie a (tie b a)) u)
+       (== `(,a ,b ,c ,t ,u) q)
+       (== (tie b (tie c b)) t))))
+ '((a.0 a.1 a.2 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1aa
+ (run* (q)
+   (exist (t u)
+     (fresh (a b c)
+       (== q a)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u)
+       (== t u))))
+ '(a.0))
+
+(mtest 'acab-1b (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b x)) u)
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1c
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u)
+       (== x a))))
+ '(_.0))
+
+(mtest 'acab-1d (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b x)) u)
+       (== t u)
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1e (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== u (tie a (tie b x)))
+       (== t u)
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1f (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== t (tie b (tie c b)))
+       (== u (tie a (tie b x)))
+       (== t u)
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1g (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== t (tie b (tie c b)))
+       (== (tie a (tie b x)) u)
+       (== t u)
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1h (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== t u)
+       (== t (tie b (tie c b)))
+       (== x a)
+       (== `(,a ,b ,c ,x ,t ,u) q)
+       (== (tie a (tie b x)) u))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-1j
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u)
+       (== t u)
+       (== x a))))
+ '(a.0))
+
+(mtest 'acab-3aa
+ (run* (q)
+   (exist (t u)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u)
+       (== t u))))
+ '(a.0))
+
+(mtest 'acab-3b (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b x)) u)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '(((a.0 a.1 a.2 _.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 (sus ((a.0 . a.3) (a.1 . a.4)) _.0)))) (hash (a.3 _.0) (a.4 _.0)))))
+
+(mtest 'acab-3c
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u))))
+ '(_.0))
+
+(mtest 'acab-3d (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b x)) u)
+       (== t u)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-3e (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+
+       (== u (tie a (tie b x)))
+       (== t u)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-3f (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+
+       (== t (tie b (tie c b)))
+       (== u (tie a (tie b x)))
+       (== t u)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-3g (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== t (tie b (tie c b)))
+       (== (tie a (tie b x)) u)
+       (== t u)
+       (== `(,a ,b ,c ,x ,t ,u) q))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-3h (skip "no nominal reification")
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== t u)
+       (== t (tie b (tie c b)))
+       (== `(,a ,b ,c ,x ,t ,u) q)
+       (== (tie a (tie b x)) u))))
+ '((a.0 a.1 a.2 a.0 (tie a.3 (tie a.4 a.3)) (tie a.3 (tie a.4 a.3)))))
+
+(mtest 'acab-3j
+ (run* (q)
+   (exist (t u x)
+     (fresh (a b c)
+       (== (tie b (tie c b)) t)
+       (== (tie a (tie b q)) u)
+       (== t u))))
+ '(a.0))
+
+(mtest 'bad-example (skip "no nominal reification")
+  (run* (q)
+    (exist (w x y z)
+      (fresh (a b c)
+        (conde
+          ((== x (tie a (tie b y)))
+           (== (tie c z) y))
+          ((== y (tie c z))
+           (== (tie a (tie b y)) x)))
+        (== w (tie b z))
+        (== q `(,w ,x ,y ,z)))))
+  '(((tie a.0 _.0) (tie a.0 (tie a.1 (tie a.2 _.1))) (tie a.0 _.0) _.0)
+    ((tie a.0 _.0) (tie a.0 (tie a.1 (tie a.2 _.1))) (tie a.0 _.0) _.0)))
+
+(letrec ((typo
+           (lambda (g e te)
+             (conde
+               [(exist (x)
+                  (== `(var ,x) e)
+                  (lookupo x te g))]
+               [(exist (rator trator rand trand)
+                  (== `(app ,rator ,rand) e)
+                  (== `(arr ,trand ,te) trator)
+                  (typo g rator trator)
+                  (typo g rand trand))]
+               [(exist (e^ te^ trand g^)
+                  (fresh (b)
+                    (== `(lam ,(tie b e^)) e)
+                    (== `(arr ,trand ,te^) te)
+                    (hash b g)
+                    (== `((,b . ,trand) . ,g) g^)
+                    (typo g^ e^ te^)))])))
+
+         (lookupo
+           (lambda (x tx g)
+             (exist (a d)
+               (== `(,a . ,d) g)
+               (conde
+                 [(==-check `(,x . ,tx) a)]
+                 [(exist (x^ tx^)
+                    (== `(,x^ . ,tx^) a)
+                    (hash x x^)
+                    (lookupo x tx d))])))))
+
+  (mtest 'typo1
+    (run* (q)
+      (fresh (c d)
+        (typo '() `(lam ,(tie c `(lam ,(tie d `(var ,c))))) q)))
+    '((arr _.0 (arr _.1 _.0))))
+
+  (mtest 'typo2
+    (run* (q)
+      (fresh (c)
+        (typo '() `(lam ,(tie c `(app (var ,c) (var ,c)))) q)))
+    '())
+
+  (mtest 'typo3
+    (run 2 (q)
+      (typo '() q '(arr int int)))
+    '((lam (tie a.0 (var a.0)))
+      (lam (tie a.0 (app (lam (tie a.1 (var a.1))) (var a.0)))))))
+
+(mtest 'unify-tie1
+  (run* (q)
+    (fresh (a b)
+      (== (tie a a) (tie b b))))
+  '(_.0))
+
+(mtest 'unify-tie2 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (== (tie a (tie a x)) (tie a (tie b y)))
+        (== `(,x ,y) q))))
+  '(((_.0 (sus ((a.0 . a.1)) _.0)) (hash (a.1 . (_.0))))))
+
+(mtest 'unify-tie3 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (conde
+          [(== (tie a (tie b `(,x ,b))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,y ,b))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,b ,y))) (tie b (tie a `(,a ,x))))]
+          [(== (tie a (tie b `(,b ,y))) (tie a (tie a `(,a ,x))))])
+        (== q `(,x ,y)))))
+  '((a.0 a.1)
+    (_.0 (sus ((a.0 . a.1) (a.1 . a.0)) _.0))
+    ((_.0 (sus ((a.0 . a.1)) _.0)) (hash (a.1 . (_.0))))))
+
+(mtest 'crei0 (skip "no nominal reification")
+  (run* (q)
+    (exist (e)
+      (fresh (a b)
+        (conde
+          ((== (tie a a) e)
+           (== (tie b b) e))
+          ((== (tie b b) e)
+           (== (tie a a) e)))
+        (== `(,e ,a ,b) q))))
+  '(((tie a.0 a.0) a.1 a.2)
+    ((tie a.0 a.0) a.1 a.2)))
+
+(mtest 'nomrei0a (skip "no nominal reification")
+  (run* (q)
+    (exist (e)
+      (fresh (a b)
+        (== (tie a a) e)
+        (== (tie b b) e)
+        (== `(,e ,a ,b) q))))
+  '(((tie a.0 a.0) a.1 a.2)))
+
+(mtest 'nomrei0b (skip "no nominal reification")
+  (run* (q)
+    (exist (e)
+      (fresh (a b)
+        (== (tie b b) e)
+        (== (tie a a) e)
+        (== `(,e ,a ,b) q))))
+  '(((tie a.0 a.0) a.1 a.2)))
+
+(mtest 'nomrei1a (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e)
+      (fresh (a b)
+        (== (tie a x) e)
+        (== (tie b y) e)
+        (== `(,a ,b ,x ,y ,e) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)))
+     (hash (a.1 . (_.0)) (a.2 . (_.0))))))
+
+(mtest 'nomrei1b (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e)
+      (fresh (a b)
+        (== (tie b y) e)
+        (== (tie a x) e)
+        (== `(,a ,b ,x ,y ,e) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)))
+     (hash (a.1 . (_.0)) (a.2 . (_.0))))))
+
+(mtest 'crei1 (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e)
+      (fresh (a b)
+        (conde
+          ((== (tie b y) e)
+           (== (tie a x) e))
+          ((== (tie a x) e)
+           (== (tie b y) e)))
+        (== `(,x ,y ,e) q))))
+  '(((_.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)))
+     (hash (a.1 _.0) (a.2 _.0)))
+    ((_.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)))
+     (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'scf0 (skip "no nominal reification")
+  (run* (q)
+    (exist (x y)
+      (fresh (a b c d)
+        (== (tie a (tie c x)) (tie b (tie d y)))
+        (== `(,x ,y) q))))
+  '(((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'scf1 (skip "no nominal reification")
+  (run* (q)
+    (exist (x y)
+      (fresh (d b c a)
+        (== (tie a (tie c x)) (tie b (tie d y)))
+        (== `(,x ,y) q))))
+  '(((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'scf2 (skip "no nominal reification")
+  (run* (q)
+    (exist (x y)
+      (fresh (a b c d)
+        (== `(,x ,y) q)
+        (== (tie a (tie c x)) (tie b (tie d y))))))
+  '(((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'scf3 (skip "no nominal reification")
+  (run* (q)
+    (exist (y x)
+      (fresh (d c b a)
+        (== `(,x ,y) q)
+        (== (tie b (tie d y)) (tie a (tie c x))))))
+  '(((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'cscf (skip "no nominal reification")
+  (run* (q)
+    (exist (x y)
+      (fresh (a b c d)
+        (conde
+          ((== (tie a (tie c x)) (tie b (tie d y)))
+           (== `(,x ,y) q))
+          ((== `(,x ,y) q)
+           (== (tie a (tie c x)) (tie b (tie d y))))
+          ((== (tie b (tie d y)) (tie a (tie c x)))
+           (== `(,x ,y) q))
+          ((== `(,x ,y) q)
+           (== (tie b (tie d y)) (tie a (tie c x))))))))
+  '(((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))
+    ((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))
+    ((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))
+    ((_.0 (sus ((a.0 . a.2) (a.1 . a.3)) _.0)) (hash (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'nomrei2a (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e1 e2)
+      (fresh (a b)
+        (== (tie a x) e1)
+        (== e1 e2)
+        (== (tie b y) e2)
+        (== `(,a ,b ,x ,y ,e1 ,e2) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)) (tie a.2 (sus ((a.0 . a.2)) _.0))) (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'nomrei2b (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e1 e2)
+      (fresh (a b)
+        (== (tie a x) e1)
+        (== (tie b y) e2)
+        (== e1 e2)
+        (== `(,a ,b ,x ,y ,e1 ,e2) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)) (tie a.2 (sus ((a.0 . a.2)) _.0))) (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'nomrei2c (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e1 e2)
+      (fresh (a b)
+        (== (tie a x) e1)
+        (== (tie b y) e2)
+        (== e2 e1)
+        (== `(,a ,b ,x ,y ,e1 ,e2) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0) (tie a.2 (sus ((a.0 . a.2)) _.0)) (tie a.2 (sus ((a.0 . a.2)) _.0))) (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'nomrei3a (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e1 e2)
+      (fresh (a b)
+        (== (tie a x) e1)
+        (== (tie b y) e2)
+        (== `(,a ,b ,x ,y ,e1 ,e2) q))))
+  '(((a.0 a.1 _.0 _.1 (tie a.2 (sus ((a.0 . a.2)) _.0)) (tie a.2 (sus ((a.1 . a.2)) _.1))) (hash (a.2 _.0 _.1)))))
+
+(mtest 'nomrei3b (skip "no nominal reification")
+  (run* (q)
+    (exist (x y e1 e2)
+      (fresh (a b)
+        (== (tie b y) e2)
+        (== (tie a x) e1)
+        (== `(,a ,b ,x ,y ,e1 ,e2) q))))
+  '(((a.0 a.1 _.0 _.1 (tie a.2 (sus ((a.0 . a.2)) _.0)) (tie a.2 (sus ((a.1 . a.2)) _.1))) (hash (a.2 _.0 _.1)))))
+
+(mtest 'nomrei4 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (== (tie a (tie a x)) (tie a (tie b y)))
+        (== `(,x ,y) q))))
+  '(((_.0 (sus ((a.0 . a.1)) _.0)) (hash (a.1 _.0)))))
+
+(mtest 'nomrei5a (skip "no nominal reification")
+  (run* (q)
+    (exist (e f)
+      (fresh (a b)
+        (== (tie a a) e)
+        (== (tie b b) e)
+        (== (tie b b) f)
+        (== `(,a ,b ,e ,f ,e) q))))
+  '((a.0 a.1 (tie a.2 a.2) (tie a.2 a.2) (tie a.2 a.2))))
+
+(mtest 'nomrei5b (skip "no nominal reification")
+  (run* (q)
+    (exist (e f)
+      (fresh (a b)
+        (== (tie b b) e)
+        (== (tie a a) e)
+        (== (tie b b) f)
+        (== `(,a ,b ,e ,f ,e) q))))
+  '((a.0 a.1 (tie a.2 a.2) (tie a.2 a.2) (tie a.2 a.2))))
+
+(mtest 'nomrei6 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (x y z e1 e2 e3)
+        (== (tie b y) e2)
+        (== (tie c z) e3)
+        (== e2 e3)
+        (== (tie a x) e1)
+        (== e1 e2)
+        (== `(,a ,b ,c ,x ,y ,z ,e1 ,e2 ,e3) q))))
+  '(((a.0 a.1 a.2 _.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0) (tie a.3 (sus ((a.0 . a.3)) _.0)) (tie a.3 (sus ((a.0 . a.3)) _.0)) (tie a.3 (sus ((a.0 . a.3)) _.0))) (hash (a.1 _.0) (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'crei-6a (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (x y z e1 e2 e3)
+        (conde
+          ((== (tie b y) e2)
+           (== (tie c z) e3))
+          ((== (tie c z) e3)
+           (== (tie b y) e2)))
+        (conde
+          ((== e2 e3)
+           (== e1 e2)
+           (== (tie a x) e1))
+          ((== (tie a x) e1)
+           (== e1 e2)
+           (== e2 e3)))
+        (== q `(,x ,y ,z)))))
+  '(((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)) (hash (a.1 _.0) (a.2 _.0)))
+    ((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)) (hash (a.1 _.0) (a.2 _.0)))
+    ((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)) (hash (a.1 _.0) (a.2 _.0)))
+    ((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)) (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'crei-6b (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (x y z e1 e2 e3)
+        (conde
+          ((== (tie a x) e1)
+           (== (tie b y) e2)
+           (== (tie c z) e3)
+           (== e1 e2)
+           (== e2 e3))
+          ((== e3 e2)
+           (== e2 e1)
+           (== e3 (tie c z))
+           (== e2 (tie b y))
+           (== e1 (tie a x))))
+        (== q `(,x ,y ,z ,e1 ,e2 ,e3)))))
+  '(((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)
+       (tie a.3 (sus ((a.0 . a.3)) _.0))
+       (tie a.3 (sus ((a.0 . a.3)) _.0))
+       (tie a.3 (sus ((a.0 . a.3)) _.0)))
+     (hash (a.1 _.0) (a.2 _.0) (a.3 _.0)))
+    ((_.0 (sus ((a.0 . a.1)) _.0) (sus ((a.0 . a.2)) _.0)
+       (tie a.3 (sus ((a.0 . a.3)) _.0))
+       (tie a.3 (sus ((a.0 . a.3)) _.0))
+       (tie a.3 (sus ((a.0 . a.3)) _.0)))
+     (hash (a.1 _.0) (a.2 _.0) (a.3 _.0)))))
+
+(mtest 'nomrei7a (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (== (tie a x) (tie b y))
+        (== `(,a ,b ,x ,y) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0)) (hash (a.1 _.0)))))
+
+(mtest 'nomrei7b (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x y)
+        (== (tie b y) (tie a x))
+        (== `(,a ,b ,x ,y) q))))
+  '(((a.0 a.1 _.0 (sus ((a.0 . a.1)) _.0)) (hash (a.1 _.0)))))
+
+(mtest 'hmm-1 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== (tie a x) (tie b x))
+        (== q `(,a ,b ,x)))))
+  '(((a.0 a.1 _.0) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'hmm-2 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (t u x)
+        (== (tie a x) t)
+        (== (tie b x) u)
+        (== t u)
+        (== q `(,a ,b ,x ,t ,u)))))
+  '(((a.0 a.1 _.0 (tie a.2 _.0) (tie a.2 _.0)) (hash (a.0 _.0) (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'tie-nest-foo-1 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== q (tie a (tie a x)))
+       (== q (tie a (tie b y))))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-2 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== q (tie a (tie b y)))
+       (== q (tie a (tie a x))))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-3 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie b y)) q)
+       (== q (tie a (tie a x))))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-4 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie b y)) q)
+       (== (tie a (tie a x)) q))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-5 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie b y)) (tie a (tie a x)))
+       (== (tie a (tie b y)) q)
+       (== (tie a (tie a x)) q))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-6 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie a x)) (tie a (tie b y)))
+       (== (tie a (tie b y)) q)
+       (== (tie a (tie a x)) q))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-7 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie b y)) q)
+       (== (tie a (tie a x)) (tie a (tie b y)))
+       (== (tie a (tie a x)) q))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest-foo-8 (skip "no nominal reification")
+ (run* (q)
+   (fresh (a b)
+     (exist (x y)
+       (== (tie a (tie b y)) q)
+       (== (tie a (tie a x)) q)
+       (== (tie a (tie a x)) (tie a (tie b y))))))
+ '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'alpha0
+  (run* (q)
+    (fresh (a b)
+      (== (tie a q) (tie b q))))
+  '(_.0))
+
+(mtest 'alpha1 (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== (tie a x) (tie b x))
+        (== q `(,a ,b ,x)))))
+  '(((a.0 a.1 _.0) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest0
+  (run* (q)
+    (fresh (a b)
+      (== q (tie a (tie b a)))))
+  '((tie a.0 (tie a.1 a.0))))
+
+(mtest 'tie-nest1
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== q (tie a (tie b x))))))
+  '((tie a.0 (tie a.1 _.0))))
+
+(mtest 'tie-nest2a- (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== q (tie a (tie a x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0)))))
+
+(mtest 'tie-nest2b (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== q (tie a (tie a x)))
+        (== q (tie b (tie b x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest2c (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== (tie b (tie b x)) (tie a (tie a x)))
+        (== q (tie b (tie b x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest2d (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== (tie b (tie b x)) (tie a (tie a x)))
+        (== q (tie a (tie a x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest2e (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== q (tie a (tie a x)))
+        (== (tie b (tie b x)) (tie a (tie a x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest2^ (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b)
+      (exist (x)
+        (== q (tie a (tie a x)))
+        (== q (tie a (tie b x))))))
+  '(((tie a.0 (tie a.1 _.0)) (hash (a.0 _.0) (a.1 _.0)))))
+
+(mtest 'tie-nest3a (skip "no nominal reification")
+  (run* (q)
+    (fresh (a)
+      (exist (x)
+        (== q `(,a ,x ,(tie a (tie a x)))))))
+  '(((a.0 _.0 (tie a.1 (tie a.2 (sus ((a.0 . a.2)) _.0)))) (hash (a.1 _.0) (a.2 _.0)))))
+
+(mtest 'nomrei8a (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (w x y z)
+        (== (tie a x) (tie b y))
+        (== x (tie c z))
+        (== y (tie c z))
+        (== q `(,x ,y))
+        (== z (tie c w)))))
+  '((((tie a.0 (tie a.1 _.0)) (tie a.0 (tie a.1 _.0))) (hash (a.0 _.0)))))
+
+(mtest 'nomrei8b (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (w x y z)
+        (== x (tie c z))
+        (== y (tie c z))
+        (== z (tie c w))
+        (== q `(,x ,y))
+        (== (tie a x) (tie b y)))))
+  '((((tie a.0 (tie a.1 _.0)) (tie a.0 (tie a.1 _.0))) (hash (a.0 _.0)))))
+
+(mtest 'nomrei8c (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (w x y z)
+        (== z (tie c w))
+        (== x (tie c z))
+        (== (tie a x) (tie b y))
+        (== y (tie c z))
+        (== q `(,x ,y)))))
+  '((((tie a.0 (tie a.1 _.0)) (tie a.0 (tie a.1 _.0))) (hash (a.0 _.0)))))
+
+(mtest 'nomrei8d (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (w x y z)
+        (== x y)
+        (== y (tie c z))
+        (== z (tie c w))
+        (== q `(,x ,y))
+        (== (tie a x) (tie b y)))))
+  '((((tie a.0 (tie a.1 _.0)) (tie a.0 (tie a.1 _.0))) (hash (a.0 _.0)))))
+
+(mtest 'nomrei8e (skip "no nominal reification")
+  (run* (q)
+    (fresh (a b c)
+      (exist (w x y z)
+        (== (tie b y) (tie a x))
+        (== x y)
+        (== y (tie c z))
+        (== z (tie c w))
+        (== q `(,x ,y)))))
+  '((((tie a.0 (tie a.1 _.0)) (tie a.0 (tie a.1 _.0))) (hash (a.0 _.0)))))
 
 (test 'tied-pair1
   (run* (q)
@@ -287,115 +1261,6 @@
             (== `(lam ,(tie c `(lam ,(tie d `(var ,d))))) u)
             (== t u))))
       '())
-
-(letrec ((substo
-           (lambda (e new a out)
-             (conde
-               [(== `(var ,a) e) (== new out)]
-               [(exist (y)
-                  (== `(var ,y) e)
-                  (== `(var ,y) out)
-                  (hash a y))]
-               [(exist (rator ratorres rand randres)
-                  (== `(app ,rator ,rand) e)
-                  (== `(app ,ratorres ,randres) out)
-                  (substo rator new a ratorres)
-                  (substo rand new a randres))]
-               [(exist (body bodyres)
-                  (fresh (c)
-                    (== `(lam ,(tie c body)) e)
-                    (== `(lam ,(tie c bodyres)) out)
-                    (hash c a)
-                    (hash c new)
-                    (substo body new a bodyres)))]))))
-
-  (test 'substo1
-    (run* (q)
-      (fresh (a b)
-        (substo `(lam ,(tie a `(app (var ,a) (var ,b))))
-          `(var ,b) a q)))
-    '((lam (tie a.0 (app (var a.0) (var a.1))))))
-
-  (test 'substo2
-    (run* (x)
-      (fresh (a b)
-        (substo `(lam ,(tie a `(var ,b)))
-          `(var ,a) b x)))
-    '((lam (tie a.0 (var a.1))))))
-
-(letrec ((typo
-           (lambda (g e te)
-             (conde
-               [(exist (x)
-                  (== `(var ,x) e)
-                  (lookupo x te g))]
-               [(exist (rator trator rand trand)
-                  (== `(app ,rator ,rand) e)
-                  (== `(arr ,trand ,te) trator)
-                  (typo g rator trator)
-                  (typo g rand trand))]
-               [(exist (e^ te^ trand g^)
-                  (fresh (b)
-                    (== `(lam ,(tie b e^)) e)
-                    (== `(arr ,trand ,te^) te)
-                    (hash b g)
-                    (== `((,b . ,trand) . ,g) g^)
-                    (typo g^ e^ te^)))])))
-
-         (lookupo
-           (lambda (x tx g)
-             (exist (a d)
-               (== `(,a . ,d) g)
-               (conde
-                 [(==-check `(,x . ,tx) a)]
-                 [(exist (x^ tx^)
-                    (== `(,x^ . ,tx^) a)
-                    (hash x x^)
-                    (lookupo x tx d))])))))
-
-  (test 'typo1
-    (run* (q)
-      (fresh (c d)
-        (typo '() `(lam ,(tie c `(lam ,(tie d `(var ,c))))) q)))
-    '((arr _.0 (arr _.1 _.0))))
-
-  (test 'typo2
-    (run* (q)
-      (fresh (c)
-        (typo '() `(lam ,(tie c `(app (var ,c) (var ,c)))) q)))
-    '())
-
-  (test 'typo3
-    (run 2 (q)
-      (typo '() q '(arr int int)))
-    '((lam (tie a.0 (var a.0)))
-      (lam (tie a.0 (app (lam (tie a.1 (var a.1))) (var a.0)))))))
-
-(test 'acab-0
-  (run* (q)
-    (fresh (a b c)
-      (== (tie b (tie c b)) (tie a (tie b a)))))
-  '(_.0))
-
-(test 'acab-1
-  (run* (q)
-    (fresh (a b c)
-      (== q a)
-      (== (tie b (tie c b)) (tie a (tie b q)))))
-  '(a.0))
-
-(test 'acab-2
-  (run* (q)
-    (fresh (a b c)
-      (== (tie b (tie c b)) (tie a (tie b q)))
-      (== q a)))
-  '(a.0))
-
-(test 'acab-3
-  (run* (q)
-    (fresh (a b c)
-      (== (tie b (tie c b)) (tie a (tie b q)))))
-  '(a.0))
 
 (mtest "pa/ir-0"
   (run* (q) (pa/ir q))
@@ -4298,6 +5163,7 @@ it can be avoided with tabling as long as the argument list doesn't change
              (full-addero d a b c e)
              (addero e x y z)))))
 
+
       (ftest "testc20.tex-24" 
         (run+ (s)
           (exist (x y r)
@@ -4364,6 +5230,707 @@ it can be avoided with tabling as long as the argument list doesn't change
             ((0 0 1) (1))
             ((1 1) (0 1))
             ((0 1) (1 1))))
+
+      (letrec
+        ((valueo
+           (lambda (v)
+             (conde
+               [(exist (n)
+                  (== `(num ,n) v))]
+               [(exist (e)
+                  (fresh (x)
+                    (== `(lam ,(tie x e)) v)
+                    (expressiono e)))])))
+
+         (expressiono
+           (lambda (e)
+             (conde
+               [(valueo e)]
+               [(exist (x)
+                  (== `(var ,x) e))]
+               [(exist (e_1 e_2)
+                  (== `(app ,e_1 ,e_2) e)
+                  (expressiono e_1)
+                  (expressiono e_2))]
+               [(exist (e_1 e_2)
+                  (== `(+ ,e_1 ,e_2) e)
+                  (expressiono e_1)
+                  (expressiono e_2))]
+               [(exist (e_1 e_2 e_3)
+                  (== `(if0 ,e_1 ,e_2 ,e_3) e)
+                  (expressiono e_1)
+                  (expressiono e_2)
+                  (expressiono e_3))])))
+
+         (contexto
+           (lambda (t out)
+             (conde
+               [(in-holeo t out)]
+               [(exist (C e v)
+                  (== `(app ,C ,e) t)
+                  (== `(app ,v ,e) out)
+                  (expressiono e)
+                  (contexto C v))]
+               [(exist (C v v^)
+                  (== `(app ,v ,C) t)
+                  (== `(app ,v ,v^) out)
+                  (valueo v)
+                  (contexto C v^))]
+               [(exist (C e v)
+                  (== `(+ ,C ,e) t)
+                  (== `(+ ,v ,e) out)
+                  (expressiono e)
+                  (contexto C v))]
+               [(exist (C v v^)
+                  (== `(+ ,v ,C) t)
+                  (== `(+ ,v ,v^) out)
+                  (valueo v)
+                  (contexto C v^))]
+               [(exist (C e1 e2 v)
+                  (== `(if0 ,C ,e1 ,e2) t)
+                  (== `(if0 ,v ,e1 ,e2) out)
+                  (expressiono e1)
+                  (expressiono e2)
+                  (contexto C v))])))
+
+         (one-stepo
+           (lambda (t out)
+             (contexto t out)))
+
+         (fully-reduceo
+           (lambda (t out)
+             (exist (res)
+               (conde
+                 [(contexto t res)
+                 (fully-reduceo res out)]
+                 [(== t out) (valueo t)]))))
+
+         (safe-fully-reduceo
+           (lambda (t out)
+             (exist (res)
+               (conde
+                 [(contexto t res)
+                 (conde
+                   [(== t res) (== res out)]
+                   [(=/= t res) (safe-fully-reduceo res out)])]
+                 [(== t out) (valueo t)]))))
+
+         (in-holeo
+           (lambda (t out)
+             (conde
+               [(exist (number1 number2 sum)
+                  (== `(+ (num ,number1) (num ,number2)) t)
+                  (== `(num ,sum) out)
+                  (pluso number1 number2 sum))]
+               [(exist (e1 e2)
+                  (== `(if0 (num ,(build-num 0)) ,e1 ,e2) t)
+                  (== e1 out)
+                  (expressiono e1)
+                  (expressiono e2))]
+               [(exist (number e1 e2)
+                  (== `(if0 (num ,number) ,e1 ,e2) t)
+                  (== e2 out)
+                  (poso number)
+                  (expressiono e1)
+                  (expressiono e2))]
+               [(exist (e v s)
+                  (fresh (x)
+                    (== `(app (lam ,(tie x e)) ,v) t)
+                    (valueo v)
+                    (expressiono e)
+                    (substo e v x out)))])))
+
+         (substo
+           (lambda (e new a out)
+             (conde
+               ((== `(var ,a) e) (== new out))
+               ((exist (y)
+                  (== `(var ,y) e)
+                  (== `(var ,y) out)
+                  (hash a y)))
+               ((exist (n)
+                  (== `(num ,n) e)
+                  (== `(num ,n) out)))
+               ((exist (rator ratorres rand randres)
+                  (== `(app ,rator ,rand) e)
+                  (== `(app ,ratorres ,randres) out)
+                  (substo rator new a ratorres)
+                  (substo rand new a randres)))
+               ((exist (e1 e1res e2 e2res)
+                  (== `(+ ,e1 ,e2) e)
+                  (== `(+ ,e1res ,e2res) out)
+                  (substo e1 new a e1res)
+                  (substo e2 new a e2res)))
+               ((exist (e1 e1res e2 e2res e3 e3res)
+                  (== `(if0 ,e1 ,e2 ,e3) e)
+                  (== `(if0 ,e1res ,e2res ,e3res) out)
+                  (substo e1 new a e1res)
+                  (substo e2 new a e2res)
+                  (substo e3 new a e3res)))      
+               ((exist (body bodyres)
+                  (fresh (c)
+                    (== `(lam ,(tie c body)) e)
+                    (== `(lam ,(tie c bodyres)) out)
+                    (hash c a)
+                    (hash c new)
+                    (substo body new a bodyres)))))))
+
+         (build-num
+           (lambda (n)
+             (cond
+               ((zero? n) '())
+               ((and (not (zero? n)) (even? n))
+                (cons 0
+                  (build-num (div n 2))))
+               ((odd? n)
+                (cons 1
+                  (build-num (div (- n 1) 2))))))))
+
+        (test "1"
+          ; Can't reduce a number.
+          (run* (q)
+            (one-stepo `(num ,(build-num 5)) q))
+          '())
+
+        (test "2"
+          (run* (q)
+            (one-stepo `(+ (num ,(build-num 5)) (num ,(build-num 3))) q))
+          '((num (0 0 0 1))))
+
+        (test "3"
+          (run* (q)
+            (one-stepo `(if0 (num ,(build-num 3)) (num ,(build-num 4)) (num ,(build-num 5))) q))
+          '((num (1 0 1))))
+
+        (test "4"
+          (run* (q)
+            (one-stepo `(if0 (num ,(build-num 0)) (num ,(build-num 4)) (num ,(build-num 5))) q))
+          '((num (0 0 1))))
+
+        (test "5"
+          (run* (q)
+            (one-stepo `(if0 (+ (num ,(build-num 5)) (num ,(build-num 3)))
+                          (num ,(build-num 4))
+                          (num ,(build-num 5))) q))
+          '((if0 (num (0 0 0 1)) (num (0 0 1)) (num (1 0 1)))))
+
+        (test "6"
+          (run* (q)
+            (one-stepo `(if0 (+ (num ,(build-num 0)) (num ,(build-num 0)))
+                          (num ,(build-num 4))
+                          (num ,(build-num 5))) q))
+          '((if0 (num ()) (num (0 0 1)) (num (1 0 1)))))
+
+
+        (test "1r"
+          (run* (q)
+            (fully-reduceo `(num ,(build-num 5)) q))
+          '((num (1 0 1))))
+
+        (test "2r"
+          (run* (q)
+            (fully-reduceo `(+ (num ,(build-num 5)) (num ,(build-num 3))) q))
+          '((num (0 0 0 1))))
+
+        (test "3r"
+          (run* (q)
+            (fully-reduceo `(if0 (num ,(build-num 3)) (num ,(build-num 4)) (num ,(build-num 5))) q))
+          '((num (1 0 1))))
+
+        (test "4r"
+          (run* (q)
+            (fully-reduceo `(if0 (num ,(build-num 0)) (num ,(build-num 4)) (num ,(build-num 5))) q))
+          '((num (0 0 1))))
+
+        (test "5r"
+          (run* (q)
+            (fully-reduceo `(if0 (+ (num ,(build-num 5)) (num ,(build-num 3)))
+                              (num ,(build-num 4))
+                              (num ,(build-num 5))) q))
+          '((num (1 0 1))))
+
+        (test "6r"
+          (run* (q)
+            (fully-reduceo `(if0 (+ (num ,(build-num 0)) (num ,(build-num 0)))
+                              (num ,(build-num 4))
+                              (num ,(build-num 5))) q))
+          '((num (0 0 1))))
+
+        (test "7r"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(lam ,(tie x `(num ,(build-num 3)))) q)))
+          '((lam (tie a.0 (num (1 1))))))
+
+        (test "8r"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(num ,(build-num 3)))) (num ,(build-num 4))) q)))
+          '((num (1 1))))
+
+        (test "9r"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(var ,x))) (num ,(build-num 4))) q)))
+          '((num (0 0 1))))
+
+        (test "10r"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(if0 (var ,x)
+                                                   (num ,(build-num 3))
+                                                   (num ,(build-num 4)))))
+                                (num ,(build-num 5)))
+                q)))
+          `((num ,(build-num 4))))
+
+        (test "substo-1"
+          (run* (q)
+            (fresh (x)
+              (substo `(if0 (var ,x)
+                         (num ,(build-num 3))
+                         (num ,(build-num 4)))
+                `(num ,(build-num 5))
+                x              
+                q)))
+          `((if0 (num ,(build-num 5))
+              (num ,(build-num 3))
+              (num ,(build-num 4)))))
+
+        (test "in-holeo-1"
+          (run* (q)
+            (fresh (x)
+              (in-holeo `(app (lam ,(tie x `(var ,x))) (num ,(build-num 4))) q)))
+          `((num ,(build-num 4))))
+
+        (test "11r"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(if0 (var ,x)
+                                                   (num ,(build-num 3))
+                                                   (num ,(build-num 4)))))
+                                (num ,(build-num 0)))
+                q)))
+          `((num ,(build-num 3))))
+
+        (test "12r"
+          (run* (q)
+            (fresh (x)
+              (safe-fully-reduceo `(app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                     (lam ,(tie x `(app (var ,x) (var ,x)))))
+                q)))
+          '((app (lam (tie a.0 (app (var a.0) (var a.0)))) (lam (tie a.0 (app (var a.0) (var a.0)))))))
+
+        (test "13r"
+          (run* (q)
+            (fresh (x y)
+              (one-stepo `(app (lam ,(tie x `(app (var ,x) (var ,x))))
+                            (lam ,(tie y `(app (var ,y) (var ,y)))))
+                q)))
+          '((app (lam (tie a.0 (app (var a.0) (var a.0)))) (lam (tie a.0 (app (var a.0) (var a.0)))))))
+
+        (test "14r"
+          (run* (q)
+            (fresh (x)
+              (one-stepo `(app (lam ,(tie x `(app (var ,x) (var ,x))))
+                            (lam ,(tie x `(app (var ,x) (var ,x)))))
+                q)))
+          '((app (lam (tie a.0 (app (var a.0) (var a.0)))) (lam (tie a.0 (app (var a.0) (var a.0)))))))
+
+        (dtest "15r"
+          (run 1 (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                (lam ,(tie x `(app (var ,x) (var ,x)))))
+                q))))
+
+        (test "Robby-1"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(var ,x))) (num ,(build-num 1))) q)))
+          `((num ,(build-num 1))))
+
+        (test "Robby-2"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (app (lam ,(tie x `(lam ,(tie x `(var ,x)))))
+                                     (num ,(build-num 1)))
+                                (num ,(build-num 2)))
+                q)))
+          `((num ,(build-num 2))))
+
+        (test "Robby-3"
+          (run* (q)
+            (fresh (x y)
+              (fully-reduceo `(app (app (lam ,(tie x `(lam ,(tie y `(var ,x)))))
+                                     (num ,(build-num 1)))
+                                (num ,(build-num 2)))
+                q)))
+          `((num ,(build-num 1))))
+
+        (test "Robby-4"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(+ (var ,x) (var ,x)))) 
+                                (num ,(build-num 2)))
+                q)))
+          `((num ,(build-num 4))))
+
+        (test "Robby-5"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(if0 (var ,x)
+                                                   (var ,x)
+                                                   (+ (var ,x) (num ,(build-num 1)))))) 
+                                (num ,(build-num 2)))
+                q)))
+          `((num ,(build-num 3))))
+
+        (test "Robby-6"
+          (run* (q)
+            (fresh (x)
+              (fully-reduceo `(app (lam ,(tie x `(if0 (var ,x)
+                                                   (var ,x)
+                                                   (+ (var ,x) (num ,(build-num 1)))))) 
+                                (num ,(build-num 0)))
+                q)))
+          `((num ,(build-num 0))))
+
+
+        ;;; Doh!  This example uses negative numbers.
+        ;;; We must add sub1 to the rules to test this example.
+        ;;;
+        ;;; Even with sub1 added, this test takes a *long* time to run
+        ;;; (I assume it isn't diverging, since evaluating tri alone took several minutes on Casper.)
+        (test "Robby-tough" (skip "NO IDEA")
+          (run* (q)
+            (fresh (le f x triangle)
+              (let ((tri
+                      `(app (lam ,(tie le `(app (lam ,(tie f `(app (var ,le)
+                                                                (lam ,(tie x `(app (app (var ,f) (var ,f)) (var ,x)))))))
+                                             (lam ,(tie f `(app (var ,le)
+                                                             (lam ,(tie x `(app (app (var ,f) (var ,f)) (var ,x))))))))))
+                         (lam ,(tie triangle `(lam ,(tie x `(if0 (var ,x)
+                                                              (num ,(build-num 0))
+                                                              (+ (var ,x) (app (var ,triangle)
+                                                                            (sub1 (var ,x))))))))))))
+                (one-stepo `(app ,tri (num ,(build-num 5))) q))))
+          `((num ,(build-num (+ 5 4 3 2 1 0)))))
+
+        (test "Robby-8"
+          (run* (q)
+            (fresh (x y)
+              (substo `(var ,x) `(var ,y) x q)))
+          '((var a.0)))
+
+        (test "Robby-9"
+          (run* (q)
+            (fresh (x y z)
+              (substo `(var ,z) `(var ,y) x q)))
+          '((var a.0)))
+
+        (test "Robby-10"
+          (run* (q)
+            (fresh (x y z)
+              (substo `(app (var ,x) (app (var ,y) (var ,z))) `(var ,y) x q)))
+          '((app (var a.0) (app (var a.0) (var a.1)))))
+
+        (test "Robby-11" (skip "no nominal reification")
+          (run* (q)
+            (fresh (x y y1 z)
+              (substo `(app (lam ,(tie x `(var ,x)))
+                         (app (lam ,(tie y1 `(var ,y1)))
+                           (lam ,(tie x `(var ,z)))))
+                `(var ,y) x q)))
+          '((app (lam (tie a.0 (var a.0))) (app (lam (tie a.0 (var a.0))) (lam (tie a.0 (var a.1)))))))
+
+        (test "Robby-12"
+          (run* (q)
+            (fresh (x y)
+              (substo `(if0 (+ (num ,(build-num 1)) (var ,x)) (var ,x) (var ,x))
+                `(var ,y) x q)))
+          `((if0 (+ (num ,(build-num 1)) (var a.0)) (var a.0) (var a.0))))
+
+        (test "Robby-13"
+          (run* (q)
+            (fresh (x y z)
+              (substo `(lam ,(tie y `(var ,x)))
+                `(lam ,(tie z `(var ,y))) x q)))
+          `((lam (tie a.0 (lam (tie a.1 (var a.2)))))))
+
+        (test "Robby-14"
+          (run* (q)
+            (fresh (x y z)
+              (substo `(lam ,(tie y `(var ,x)))
+                `(num ,(build-num 1)) x q)))
+          `((lam (tie a.0 (num ,(build-num 1))))))
+
+        (test "Robby-15"
+          (run* (q)
+            (fresh (x y z)
+              (substo `(lam ,(tie y `(var ,x)))
+                `(var ,y) x q)))
+          `((lam (tie a.0 (var a.1)))))
+
+        (test "Robby-16"
+          (run* (q)
+            (fresh (x y z z2)
+              (substo `(lam ,(tie z `(app (var ,z2) (var ,z))))
+                `(lam ,(tie y `(var ,y))) x q)))
+          `((lam (tie a.0 (app (var a.1) (var a.0))))))
+
+        (test "Robby-17"
+          (run* (q)
+            (fresh (x z z1)
+              (substo `(lam ,(tie z `(app (var ,z1) (var ,z))))
+                `(lam ,(tie z `(var ,z))) x q)))
+          `((lam (tie a.0 (app (var a.1) (var a.0))))))
+
+        (test "Robby-18"
+          (run* (q)
+            (fresh (x z z1)
+              (substo `(lam ,(tie z `(app (var ,z1) (var ,z))))
+                `(var ,z) x q)))
+          `((lam (tie a.0 (app (var a.1) (var a.0))))))
+
+        (test "Robby-19"
+          (run* (q)
+            (fresh (x3 x2)
+              (substo `(lam ,(tie x2 `(var ,x2)))
+                `(num ,(build-num 5)) x3 q)))
+          `((lam (tie a.0 (var a.0)))))
+
+
+        ;;; Robby's main example
+        (test "more-Robby-1"
+          (run* (q)
+            (fresh (n x)
+              (one-stepo `(app (lam ,(tie n `(if0
+                                               (var ,n)
+                                               (num ,(build-num 1))
+                                               (app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                                 (lam ,(tie x `(app (var ,x) (var ,x))))))))
+                            (+ (num ,(build-num 2)) (num ,(build-num 2))))
+                q)))
+          '((app (lam (tie
+                        a.0
+                        (if0 (var a.0)
+                          (num (1))
+                          (app (lam (tie a.1 (app (var a.1) (var a.1))))
+                            (lam (tie a.1 (app (var a.1) (var a.1))))))))
+              (num (0 0 1)))))
+
+        (test "more-Robby-2"
+          (run 1 (q)
+            (fresh (n x)
+              (safe-fully-reduceo `(app (lam ,(tie n `(if0
+                                                        (var ,n)
+                                                        (num ,(build-num 1))
+                                                        (app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                                          (lam ,(tie x `(app (var ,x) (var ,x))))))))
+                                     (+ (num ,(build-num 2)) (num ,(build-num 2))))
+                q)))
+          '((app (lam (tie a.0 (app (var a.0) (var a.0)))) (lam (tie a.0 (app (var a.0) (var a.0)))))))
+
+        (test "more-Robby-3"
+          (run* (q)
+            (fresh (n x)
+              (safe-fully-reduceo `(app (lam ,(tie n `(if0
+                                                        (var ,n)
+                                                        (num ,(build-num 1))
+                                                        (app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                                          (lam ,(tie x `(app (var ,x) (var ,x))))))))
+                                     (+ (num ,(build-num 2)) (num ,(build-num 2))))
+                q)))
+          '((app (lam (tie a.0 (app (var a.0) (var a.0)))) (lam (tie a.0 (app (var a.0) (var a.0)))))))
+
+        (dtest "more-Robby-4"
+          (run 1 (q)
+            (fresh (n x)
+              (fully-reduceo `(app (lam ,(tie n `(if0
+                                                   (var ,n)
+                                                   (num ,(build-num 1))
+                                                   (app (lam ,(tie x `(app (var ,x) (var ,x))))
+                                                     (lam ,(tie x `(app (var ,x) (var ,x))))))))
+                                (+ (num ,(build-num 2)) (num ,(build-num 2))))
+                q))))
+
+        (ftest "backwards-0"
+          (run+ (q)
+            (one-stepo q `(num ,(build-num 5))))
+          `((+ (num (1 0 1)) (num ()))
+            (+ (num ()) (num (1 0 1)))
+            (+ (num (1)) (num (0 0 1)))
+            (if0 (num ()) (num (1 0 1)) (var _.0))
+            (if0 (num ()) (num (1 0 1)) (num _.0))
+            (+ (num (0 0 1)) (num (1)))
+            (+ (num (1 1)) (num (0 1)))
+            (+ (num (0 1)) (num (1 1)))
+            (if0 (num ()) (num (1 0 1)) (lam (tie a.0 (var _.0))))
+            (if0 (num ()) (num (1 0 1)) (lam (tie a.0 (num _.0))))
+            (app (lam (tie a.0 (var a.0))) (num (1 0 1)))
+            (if0 (num (_.0 . _.1)) (var _.2) (num (1 0 1)))
+            (if0 (num (_.0 . _.1)) (num _.2) (num (1 0 1)))
+            (if0 (num ()) (num (1 0 1)) (lam (tie a.0 (lam (tie a.1 (var _.0))))))
+            (if0 (num ()) (num (1 0 1)) (lam (tie a.0 (lam (tie a.1 (num _.0))))))
+            (app (lam (tie a.0 (num (1 0 1)))) (num _.0))
+            (if0 (num ()) (num (1 0 1)) (app (var _.0) (var _.1)))
+            (if0 (num ()) (num (1 0 1)) (app (var _.0) (num _.1)))
+            (if0 (num (_.0 . _.1)) (lam (tie a.0 (var _.2))) (num (1 0 1)))
+            (if0 (num ()) (num (1 0 1))
+              (lam (tie a.0 (lam (tie a.1 (lam (tie a.2 (var _.0))))))))))
+
+        (ftest "generate-0"
+          (run+ (q)
+            (exist (e v)
+              (one-stepo e v)
+              (== `(,e ,v) q)))
+          `(((+ (num _.0) (num ())) (num _.0))
+            ((+ (num ()) (num (_.0 . _.1))) (num (_.0 . _.1)))
+            ((+ (num (1)) (num (1))) (num (0 1)))
+            ((+ (num (1)) (num (0 _.0 . _.1))) (num (1 _.0 . _.1)))
+            ((app (+ (num _.0) (num ())) (var _.1)) (app (num _.0) (var _.1)))
+            ((if0 (num ()) (var _.0) (var _.1)) (var _.0))
+            ((if0 (num ()) (var _.0) (num _.1)) (var _.0))
+            ((+ (num (1)) (num (1 1))) (num (0 0 1)))
+            ((app (+ (num _.0) (num ())) (num _.1)) (app (num _.0) (num _.1)))
+            ((app (num _.0) (+ (num _.1) (num ()))) (app (num _.0) (num _.1)))
+            ((app (+ (num ()) (num (_.0 . _.1))) (var _.2)) (app (num (_.0 . _.1)) (var _.2)))
+            ((if0 (num ()) (num _.0) (var _.1)) (num _.0))
+            ((+ (num (0 _.0 . _.1)) (num (1))) (num (1 _.0 . _.1)))
+            ((+ (num (1)) (num (1 0 _.0 . _.1))) (num (0 1 _.0 . _.1)))
+            ((+ (num (0 1)) (num (0 1))) (num (0 0 1)))
+            ((if0 (num ()) (num _.0) (num _.1)) (num _.0))
+            ((app (lam (tie a.0 (var a.0))) (num _.0)) (num _.0))
+            ((if0 (num (_.0 . _.1)) (var _.2) (var _.3)) (var _.3))
+            ((+ (num (1)) (num (1 1 1))) (num (0 0 0 1)))
+            ((app (+ (num (1)) (num (1))) (var _.0)) (app (num (0 1)) (var _.0)))))
+
+        (ftest "backwards-1"
+          (run+ (q)
+            (fully-reduceo q `(num ,(build-num 5))))
+          `((num (1 0 1))
+            (+ (num (1 0 1)) (num ()))
+            (+ (num ()) (num (1 0 1)))
+            (+ (num (1)) (num (0 0 1)))
+            (if0 (num ()) (num (1 0 1)) (var _.0))
+            (+ (num (0 0 1)) (num (1)))
+            (if0 (num ()) (num (1 0 1)) (num _.0))
+            (app (lam (tie a.0 (var a.0))) (num (1 0 1)))
+            (if0 (num (_.0 . _.1)) (var _.2) (num (1 0 1)))
+            (+ (num (1 1)) (num (0 1)))
+            (app (lam (tie a.0 (var a.0))) (+ (num (1 0 1)) (num ())))
+            (app (lam (tie a.0 (num (1 0 1)))) (num _.0))
+            (if0 (num (_.0 . _.1)) (num _.2) (num (1 0 1)))
+            (if0 (num ()) (num (1 0 1)) (lam (tie a.0 (var _.0))))
+            (+ (num (0 1)) (num (1 1)))
+            (+ (+ (num (1 0 1)) (num ())) (num ()))
+            (+ (+ (num ()) (num ())) (num (1 0 1)))
+            (+ (num (1 0 1)) (+ (num ()) (num ())))
+            (+ (num ()) (+ (num (1 0 1)) (num ())))
+            (+ (+ (num (1)) (num ())) (num (0 0 1)))))
+
+        (ftest "generate-1" (skip "no nominal reification")
+          (run+ (q)
+            (exist (e v)
+              (fully-reduceo e v)      
+              (== `(,e ,v) q)))
+          `(((num _.0)
+             (num _.0))
+            ((lam (tie x.0 (var _.0)))
+             (lam (tie x.0 (var _.0))))
+            ((lam (tie x.0 (num _.0)))
+             (lam (tie x.0 (num _.0))))
+            ((lam (tie x.0 (lam (tie x.1 (var _.0)))))
+             (lam (tie x.0 (lam (tie x.1 (var _.0))))))
+            ((+ (num _.0) (num ()))
+             (num _.0))
+            ((lam (tie x.0 (lam (tie x.1 (num _.0)))))
+             (lam (tie x.0 (lam (tie x.1 (num _.0))))))
+            ((+ (num ()) (num (_.0 . _.1)))
+             (num (_.0 . _.1)))
+            ((lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (var _.0)))))))
+             (lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (var _.0))))))))
+            ((lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (num _.0)))))))
+             (lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (num _.0))))))))
+            ((lam (tie x.0 (app (var _.0) (var _.1))))
+             (lam (tie x.0 (app (var _.0) (var _.1)))))
+            ((+ (num (1)) (num (1)))
+             (num (0 1)))
+            ((lam (tie x.0 (app (var _.0) (num _.1))))
+             (lam (tie x.0 (app (var _.0) (num _.1)))))
+            ((lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (lam (tie x.3 (var _.0)))))))))
+             (lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (lam (tie x.3 (var _.0))))))))))
+            ((lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (lam (tie x.3 (num _.0)))))))))
+             (lam (tie x.0 (lam (tie x.1 (lam (tie x.2 (lam (tie x.3 (num _.0))))))))))
+            ((lam (tie x.0 (app (num _.0) (var _.1))))
+             (lam (tie x.0 (app (num _.0) (var _.1)))))
+            ((lam (tie x.0 (app (num _.0) (num _.1))))
+             (lam (tie x.0 (app (num _.0) (num _.1)))))
+            ((lam (tie x.0 (+ (var _.0) (var _.1))))
+             (lam (tie x.0 (+ (var _.0) (var _.1)))))
+            ((lam (tie x.0 (lam (tie x.1 (app (var _.0) (var _.1))))))
+             (lam (tie x.0 (lam (tie x.1 (app (var _.0) (var _.1)))))))
+            ((lam (tie x.0 (+ (var _.0) (num _.1))))
+             (lam (tie x.0 (+ (var _.0) (num _.1)))))
+            ((+ (num (1)) (num (0 _.0 . _.1)))
+             (num (1 _.0 . _.1)))))
+
+        (ftest "generate-2" (skip "no nominal reification")
+          ; More interesting answers.
+          ; Only look at the applications.  
+          (run+ (q)
+            (exist (e v rator rand)
+              (== `(app ,rator ,rand) e)
+              (fully-reduceo e v)
+              (== `(,e ,v) q)))
+          '(((app (lam (tie x.0 (var x.0))) (num _.0)) (num _.0))
+            ((app (lam (tie x.0 (num _.0))) (num _.1)) (num _.0))
+            ((app (lam (tie x.0 (var x.0)))
+               (lam (tie x.1 (var _.0))))
+             (lam (tie x.1 (var _.0))))
+            ((app (lam (tie x.0 (num _.0)))
+               (lam (tie x.1 (var _.1))))
+             (num _.0))
+            (((app (lam (tie x.0 (lam (tie x.1 (var x.0)))))
+                (num _.0))
+              (lam (tie c.0 (num _.0)))) : ((c.0 . _.0)))
+            (((app (lam (tie x.0 (lam (tie x.1 (var _.0)))))
+                (num _.1))
+              (lam (tie c.0 (var (susp-tag ((c.0 x.1)) _.0))))) : ((c.0 . _.0) (c.0 . _.1) (x.0 . _.0)))
+            (((app (lam (tie x.0 (lam (tie x.1 (num _.0)))))
+                (num _.1))
+              (lam (tie c.0 (num (susp-tag ((c.0 x.1)) _.0))))) : ((c.0 . _.0) (c.0 . _.1)))
+            ((app (lam (tie x.0 (var x.0))) (+ (num _.0) (num ())))
+             (num _.0))
+            ((app (lam (tie x.0 (var x.0)))
+               (lam (tie x.1 (num _.0))))
+             (lam (tie x.1 (num _.0))))
+            ((app (lam (tie x.0 (num _.0)))
+               (lam (tie x.1 (num _.1))))
+             (num _.0))))
+
+        (ftest "generate-3" (skip "no nominal reification")
+          ; More interesting answers.
+          ; Only look at the applications.
+          ; Note that we perform the filtering *after* generating/reducing the expressions.
+          (run+ (q)
+            (exist (e v rator rand)  
+              (fully-reduceo e v)
+              (== `(app ,rator ,rand) e)
+              (== `(,e ,v) q)))
+          `(((app (lam (tie x.0 (var x.0))) (num _.0)) (num _.0))
+            ((app (lam (tie x.0 (var x.0))) (+ (num _.0) (num ())))
+             (num _.0))
+            ((app (lam (tie x.0 (num _.0))) (num _.1)) (num _.0))
+            (((app (lam (tie x.0 (num _.0))) (+ (num _.1) (num ())))
+              (num (susp-tag ((x.1 x.0)) _.0))) : ((x.1 . _.0)))
+            ((app (lam (tie x.0 (var x.0)))
+               (+ (num ()) (num (_.0 . _.1))))
+             (num (_.0 . _.1)))
+            ((app (lam (tie x.0 (var x.0)))
+               (lam (tie x.1 (var _.0))))
+             (lam (tie x.1 (var _.0)))))))
 
         (let ((minuso (lambda (n m k) (pluso m k n))))
           (letrec ((bumpo
@@ -5044,8 +6611,7 @@ it can be avoided with tabling as long as the argument list doesn't change
       (==-check x y)))
   `())
 
-#!eof
-;(print "DONE" nl "SKIPPED: " (skipped-tests) nl) #!eof
+(print "DONE" nl) (print-skipped-reasons) #!eof
 
 (mtest "bobo0" (skip "subsumption")
   (letrec
