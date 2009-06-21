@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+
+import sys, os
+res = {}
+stats = {}
+for line in file(sys.argv[1]):
+  line = line.strip()
+  if line.startswith("WALK"):
+    cur = line.split()[1]
+    res[cur] = {}
+    stats[cur] = {}
+  else:
+    if "TEST" in line:
+      curtest = line.split()[1]
+    elif "ms elapsed cpu time" in line:
+      res[cur][curtest] = int(line.split()[0])
+    elif "avg-steps-per-call" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-steps-per-call'] = float(line.split(':')[1])
+    elif "avg-recrs-per-call" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-recrs-per-call'] = float(line.split(':')[1])
+    elif "avg-ssteps-per-call" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-ssteps-per-call'] = float(line.split(':')[1])
+    elif "avg-srecrs-per-call" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-srecrs-per-call'] = float(line.split(':')[1])
+    elif "avg-percent-walked" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-percent-walked'] = float(line.split(':')[1])
+    elif "avg-depth-to-first-match" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-depth-to-first-match'] = float(line.split(':')[1])
+    elif "avg-len" in line:
+      d = stats[cur].setdefault(curtest, {})
+      d['avg-len'] = float(line.split(':')[1])
+
+test_order = ["mktests", "logo", "permo", "appendo", "wc-assoc-mk", "wc-assoc", 
+              "rand-assoc", "leantap", "zebra"]
+t = test_order[0]
+def pick_best(k1, k2):
+  if not t in res[k2]:
+    return k1
+  if not t in res[k1]:
+    return k2
+  if res[k1][t] < res[k2][t]:
+    return k1
+  else:
+    return k2
+res_lst = [["algorithm"]+test_order]
+col_wid = map(lambda x:len(x), res_lst[0])
+best_score = {}
+while res:
+  alg_nm = reduce(pick_best, res.keys())
+  alg_res = res.pop(alg_nm)
+  lst = [alg_nm]
+  if len(alg_nm) > col_wid[0]:
+    col_wid[0] = len(alg_nm)
+  for i,test in enumerate(test_order):
+    if test in alg_res:
+      a = alg_res[test]
+      a_str = "%d" % alg_res[test]
+      if len(a_str) > col_wid[i]:
+        col_wid[i] = len(a_str)
+      lst.append(a)
+      bs = best_score.setdefault(test, a)
+      if bs >= a:
+        best_score[test] = a
+    else:
+      lst.append("-")
+  res_lst.append(lst)
+
+for r,row in enumerate(res_lst):
+  if r>0: tot=0.
+  for i,l in enumerate(col_wid):
+    if i>0 and best_score[test_order[i-1]]==row[i]:
+      print ("*%s" % row[i]).rjust(l),
+    else:
+      print ("%s" % row[i]).rjust(l),
+    if r>0 and i>0 and best_score[test_order[i-1]]>0:
+      tot += row[i]/float(best_score[test_order[i-1]])
+  if r>0: print " (%3.2f)" % (tot/(len(row)-1))
+  else: print
+  if r==0: # print underlines
+    for i,l in enumerate(col_wid):
+      print ('-'*l).ljust(l),
+    print
+
+sys.exit()
+print "\nalgorithm               avg-s/c   avg-r/c reify-avg-s/c reify-avg-r/c    avg-len avg-%-walked avg-steps-to-first-match"
+print '-'*(col_wid[0]+8), " -----------", "---------", "-------------", "-------------", "----------", "------------", "------------------------"
+w = col_wid[0]
+for k,v in stats.items():
+  print k.ljust(w),
+  i=0
+  for t in test_order:
+    if t in v:
+      asc = '%3.2f'%v[t].get('avg-steps-per-call',0)
+      arc = '%3.2f'%v[t].get('avg-recrs-per-call',0)
+      rsc = '%3.2f'%v[t].get('avg-ssteps-per-call',0)
+      rrc = '%3.2f'%v[t].get('avg-srecrs-per-call',0)
+      apw = '%3.2f'%v[t].get('avg-percent-walked',0)
+      adf = '%3.2f'%v[t].get('avg-depth-to-first-match',0)
+      al = '%3.2f'%v[t].get('avg-len',0)
+      print t.rjust(i), asc.rjust(12), arc.rjust(9), rsc.rjust(13), rrc.rjust(13),\
+        al.rjust(10), apw.rjust(12), adf.rjust(24)
+    if i==0: i=w+len(t)+1

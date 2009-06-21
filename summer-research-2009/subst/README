@@ -1,0 +1,8 @@
+This directory contains benchmarks for various algorithms and representations
+of substitutions in miniKanren.
+
+To run all tests with all versions type 'make'. In walktests.scm the variable
+'long-tests' controls whether a very short version of the tests run, versus the 
+full version.
+
+The code runs only in chez.
