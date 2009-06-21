@@ -1,5 +1,5 @@
 (library (minikanren nominal)
-  (export run run* conde exist fresh hash == ==-check (rename (make-tie tie)))
+  (export run run* run+ conde exist fresh hash == ==-check (rename (make-tie tie)))
   (import (rnrs))
 
   (define-syntax lambdaf@ (syntax-rules () ((_ () e) (lambda () e))))
@@ -174,6 +174,7 @@
       (let ((s (p-s p)))
         (let rec ((a* a*) (h* (p-h* p)))
           (if (null? a*) (make-p s h*)
+            ; do-hash unnecessary? - yes, but trying to do the verify-h* step early
             (let ((h* (do-hash (car a*) v s h*)))
               (and h* (rec (cdr a*) h*))))))))
 

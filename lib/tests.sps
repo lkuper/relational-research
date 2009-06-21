@@ -1,4 +1,4 @@
-(import (minikanren vanilla-unsound)
+(import (minikanren nominal)
   (rnrs) (rnrs eval))
 
 (define-syntax define-syntax-when-unbound
