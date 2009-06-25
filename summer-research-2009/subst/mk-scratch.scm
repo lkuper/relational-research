@@ -30,7 +30,7 @@
 
 (define-syntax var
   (syntax-rules ()
-    ((_ x) (vector x (kd:reserve s)))))
+    ((_ x s) (vector x (kd:reserve s)))))
     ;((_ x) (vector x))))
 
 (define var-idx
@@ -157,7 +157,7 @@
     (set! rc -1)
     (set! rl '())
     (let loop [(v v)]
-      (let ((v (safe-walk v s)))
+      (let ((v (walk v s)))
         (cond
           ((assq v rl) => (lambda (a) (cdr a)))
           ((var? v) (begin (set! rc (add1 rc))
@@ -235,7 +235,8 @@
     ((_ (x ...) g0 g ...)
      (lambdag@ (s)
        (inc
-         (let ((x (var 'x)) ...)
+         ;(let ((x (var 'x)) ...)
+         (let ((x (var 'x s)) ...)
            (bind* (g0 s) g ...)))))))
  
 (define-syntax bind*

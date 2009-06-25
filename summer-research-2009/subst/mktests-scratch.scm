@@ -3,9 +3,9 @@
 
 (load "mk-scratch.scm")
 
-(define print-s
-  (lambda ()
-    (lambdag@ (s) (begin (write s) (newline) (singleton s)))))
+;(define print-s
+  ;(lambda ()
+    ;(lambdag@ (s) (begin (write s) (newline) (singleton s)))))
 
 (define-syntax test-check
   (syntax-rules ()
@@ -112,19 +112,19 @@
 
   `())
 
-(test-check "testn"
-  (run* (q)
-    (lambdag@ (s) (begin (write s) (newline) (singleton s)))
-    (== #f #f))
-  `(_.0))
+;(test-check "testn"
+  ;(run* (q)
+    ;(lambdag@ (s) (begin (write s) (newline) (singleton s)))
+    ;(== #f #f))
+  ;`(_.0))
 
-(test-check "testc11.tex-2"
-  (run* (q)
-    (lambdag@ (s) (begin (write s) (newline) (singleton s)))
-    (== #t q)
-    (lambdag@ (s) (begin (write s) (newline) (singleton s))))
+;(test-check "testc11.tex-2"
+  ;(run* (q)
+    ;(lambdag@ (s) (begin (write s) (newline) (singleton s)))
+    ;(== #t q)
+    ;(lambdag@ (s) (begin (write s) (newline) (singleton s))))
 
-  `(#t))
+  ;`(#t))
 
 (test-check "testc11.tex-3"
   (run* (q)
