@@ -5,4 +5,7 @@ To run all tests with all versions type 'make'. In walktests.scm the variable
 'long-tests' controls whether a very short version of the tests run, versus the 
 full version.
 
+mk-scratch.scm has the minimal changes needed to embed the deferred extension 
+skew binary version.
+
 The code runs only in chez.
