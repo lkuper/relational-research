@@ -1,5 +1,5 @@
-#SCHEME=petite
-SCHEME=scheme
+SCHEME=petite
+#SCHEME=scheme
 
 timeit:
 	cp settings/skew-def-settings.scm settings.scm
@@ -39,7 +39,7 @@ timeit:
 	./process_res res.raw | tee res.final
 
 quick:
-	cp settings/skew-def-settings.scm settings.scm
+	cp settings/bst-settings.scm settings.scm
 	$(SCHEME) --script timeit.scm > res.raw 2>&1
 	./process_res res.raw | tee res.final
 

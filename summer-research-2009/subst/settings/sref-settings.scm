@@ -7,7 +7,7 @@
   (define build-random-assoc-br #t)
   (define-syntax choose-var
     (syntax-rules ()
-      [(_ var-1 var-2 var-2-k var-2-kd) var-1]))
+      [(_ var-1 var-2 var-2-k var-2-kd var-bst) var-1]))
   (define-syntax choose-walk
     (syntax-rules ()
       [(_ wassq wbasic wrhs wstep wsref wsreff wtrie wbst wskew wskewd
