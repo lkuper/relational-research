@@ -315,7 +315,7 @@
   ;; walk that uses stack-unrolling to reverse the direction of the walk after
   ;; the first match, so at most goes forward through the list, then backward
   ;; O(2n)
-  (load "walk-front-back.scm")
+  (include "walk-front-back.scm")
 ;  (define walk-fb
 ;    (lambda (v s^)
 ;      (inc-ws-calls s^)
@@ -876,7 +876,7 @@
           ((eq? v w) s)
           (else (ext-s v w s))))))
 
-  (inlude "unify.scm")
+  (include "unify.scm")
 ;  (define unify-sv
 ;    (lambda (v w s)
 ;      (let ((v (walk v s))
@@ -884,12 +884,6 @@
 ;        (cond
 ;          ((eq? v w) s)
 ;          ((var? v) (ext-s v w s))
-;          ;;((var? v) ;; ordering testing
-;          ;;(if (and (var? w)
-;          ;;(fx< (fxabs (fx- (var-idx w) (cadr s)))
-;          ;;(fxabs (fx- (var-idx v) (cadr s)))))
-;          ;;(ext-s w v s)
-;          ;;(ext-s v w s)))
 ;          ((var? w) (ext-s w v s))
 ;          ((and (pair? v) (pair? w))
 ;           (let ((s (unify-sv (car v) (car w) s)))
