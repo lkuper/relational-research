@@ -158,35 +158,36 @@
              ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
              (else (loop (cdr s)))))
           (else v)))))
-  (define step
-    (lambda (v s^)
-      (inc-ws-recrs)
-      (ws-found-match)
-      (let loop ((s s^))
-        (inc-ws-steps)
-        (cond
-          ((var? v)
-           (cond
-             ((eq? v (rhs (car s))) v)
-             ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
-             (else (loop (cdr s)))))
-          (else v)))))
+;  (define step
+;    (lambda (v s^)
+;      (inc-ws-recrs)
+;      (ws-found-match)
+;      (let loop ((s s^))
+;        (inc-ws-steps)
+;        (cond
+;          ((var? v)
+;           (cond
+;             ((eq? v (rhs (car s))) v)
+;             ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
+;             (else (loop (cdr s)))))
+;          (else v)))))
 
   ;; like walk-step but uses substitution reference as variable birth record
-  (define walk-sref
-    (lambda (v s^)
-      (inc-ws-calls s^)
-      (let loop ((s s^))
-        (inc-ws-steps)
-        (cond
-          ((var? v)
-           (cond
-             ((null? s) v) ;; XXX
-             ((eq? s (vector-ref v 0)) v)
-             ((eq? v (rhs (car s))) v)
-             ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
-             (else (loop (cdr s)))))
-          (else v)))))
+  (include "walk-sref.scm")
+;  (define walk-sref
+;    (lambda (v s^)
+;      (inc-ws-calls s^)
+;      (let loop ((s s^))
+;        (inc-ws-steps)
+;        (cond
+;          ((var? v)
+;           (cond
+;             ((null? s) v) ;; XXX
+;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? v (rhs (car s))) v)
+;             ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
+;             (else (loop (cdr s)))))
+;          (else v)))))
 
   ;; like walk-sref but extends (and returns) substitution when a non-variable is
   ;; found to flatten chains
@@ -314,31 +315,32 @@
   ;; walk that uses stack-unrolling to reverse the direction of the walk after
   ;; the first match, so at most goes forward through the list, then backward
   ;; O(2n)
-  (define walk-fb
-    (lambda (v s^)
-      (inc-ws-calls s^)
-      (call/cc
-       (lambda (k)
-         (let loop ((s s^))
-           (inc-ws-steps)
-           (cond
-             ((var? v)
-              (cond
-                ((null? s) v) ;; XXX
-                ((eq? s (vector-ref v 0)) (k v))
-                ((eq? v (rhs (car s))) (k v))
-                ((eq? v (lhs (car s))) (rhs (car s)))
-                (else
-                 (let ([v (loop (cdr s))])
-                   (inc-ws-steps)
-                   (ws-found-match)
-                   (cond
-                     ((var? v)
-                      (cond
-                        ((eq? v (lhs (car s))) (rhs (car s)))
-                        (else v)))
-                     (else (k v)))))))
-             (else (k v))))))))
+  (load "walk-front-back.scm")
+;  (define walk-fb
+;    (lambda (v s^)
+;      (inc-ws-calls s^)
+;      (call/cc
+;       (lambda (k)
+;         (let loop ((s s^))
+;           (inc-ws-steps)
+;           (cond
+;             ((var? v)
+;              (cond
+;                ((null? s) v) ;; XXX
+;                ((eq? s (vector-ref v 0)) (k v))
+;                ((eq? v (rhs (car s))) (k v))
+;                ((eq? v (lhs (car s))) (rhs (car s)))
+;                (else
+;                 (let ([v (loop (cdr s))])
+;                   (inc-ws-steps)
+;                   (ws-found-match)
+;                   (cond
+;                     ((var? v)
+;                      (cond
+;                        ((eq? v (lhs (car s))) (rhs (car s)))
+;                        (else v)))
+;                     (else (k v)))))))
+;             (else (k v))))))))
 
   ;; same as walk-fb but optimized
   (define walk-fb-opt
@@ -366,66 +368,68 @@
 
   ;; same as walk-fb but builds reverse list on the way forward instead of using
   ;; stack unrolling to walk backward. Doesn't use double-linked list assoc.
-  (define walk-no-rec-stk
-    (lambda (v s^)
-      (inc-ws-calls s^)
-      (let loop ([s s^] [s< '()])
-        (inc-ws-steps)
-        (cond
-          ((var? v)
-           (cond
-             ((null? s) v) ;; XXX
-             ((eq? s (vector-ref v 0)) v)
-             ((eq? v (rhs (car s))) v)
-             ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) s<))
-             ;;((eq? v (lhs (car s))) (if (null? s<) (rhs (car s)) (walk-no-rec-stk-back (rhs (car s)) s<)))
-             (else (loop (cdr s) (cons (car s) s<)))))
-          (else v)))))
-  (define walk-no-rec-stk-back
-    (lambda (v s)
-      (ws-found-match)
-      (inc-ws-steps)
-      (cond
-        ((var? v)
-         (cond
-           ((null? s) v) ;; why do we need this?
-           ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) (cdr s)))
-           (else (walk-no-rec-stk-back v (cdr s)))))
-        (else v))))
+  (include "walk-flatten.scm")
+;  (define walk-no-rec-stk
+;    (lambda (v s^)
+;      (inc-ws-calls s^)
+;      (let loop ([s s^] [s< '()])
+;        (inc-ws-steps)
+;        (cond
+;          ((var? v)
+;           (cond
+;             ((null? s) v) ;; XXX
+;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? v (rhs (car s))) v)
+;             ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) s<))
+;             ;;((eq? v (lhs (car s))) (if (null? s<) (rhs (car s)) (walk-no-rec-stk-back (rhs (car s)) s<)))
+;             (else (loop (cdr s) (cons (car s) s<)))))
+;          (else v)))))
+;  (define walk-no-rec-stk-back
+;    (lambda (v s)
+;      (ws-found-match)
+;      (inc-ws-steps)
+;      (cond
+;        ((var? v)
+;         (cond
+;           ((null? s) v) ;; why do we need this?
+;           ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) (cdr s)))
+;           (else (walk-no-rec-stk-back v (cdr s)))))
+;        (else v))))
 
-  ;; same as walk-no-rec-stk but flattens chains like walk-sreff
-  (define walk-no-rec-stkf
-    (lambda (v s^)
-      (inc-ws-calls s^)
-      (let loop ([s s^] [s< '()])
-        (inc-ws-steps)
-        (cond
-          ((var? v)
-           (cond
-             ((null? s) (values v s^)) ;; XXX
-             ((eq? s (vector-ref v 0)) (values v s^))
-             ((eq? v (rhs (car s))) (values v s^))
-             ((eq? v (lhs (car s))) (walk-no-rec-stkf-back (rhs (car s)) `(,v) s^ s<))
-             (else (loop (cdr s) (cons (car s) s<)))))
-          (else (values v s^))))))
-  (define ret-no-rec-stkf
-    (lambda (v m s)
-      (let loop ([m m] [s s])
-        (cond
-          [(null? m) (values v s)]
-          [else (loop (cdr m) (cons `(,(car m) . ,v) s))]))))
-  (define walk-no-rec-stkf-back
-    (lambda (v m s> s)
-      (ws-found-match)
-      (inc-ws-steps)
-      (cond
-        ((var? v)
-         (cond
-           ((null? s) (values v s>)) ;; why do we need this?
-           ((eq? v (lhs (car s)))
-            (walk-no-rec-stkf-back (rhs (car s)) (cons v m) s> (cdr s)))
-           (else (walk-no-rec-stkf-back v m s> (cdr s)))))
-        (else (ret-no-rec-stkf v m s>)))))
+  ;; same as walk-no-rec-stk but flattens chains like walk-sreff  
+  (include "walk-flatten.scm")
+;  (define walk-no-rec-stkf
+;    (lambda (v s^)
+;      (inc-ws-calls s^)
+;      (let loop ([s s^] [s< '()])
+;        (inc-ws-steps)
+;        (cond
+;          ((var? v)
+;           (cond
+;             ((null? s) (values v s^)) ;; XXX
+;             ((eq? s (vector-ref v 0)) (values v s^))
+;             ((eq? v (rhs (car s))) (values v s^))
+;             ((eq? v (lhs (car s))) (walk-no-rec-stkf-back (rhs (car s)) `(,v) s^ s<))
+;             (else (loop (cdr s) (cons (car s) s<)))))
+;          (else (values v s^))))))
+;  (define ret-no-rec-stkf
+;    (lambda (v m s)
+;      (let loop ([m m] [s s])
+;        (cond
+;          [(null? m) (values v s)]
+;          [else (loop (cdr m) (cons `(,(car m) . ,v) s))]))))
+;  (define walk-no-rec-stkf-back
+;    (lambda (v m s> s)
+;      (ws-found-match)
+;      (inc-ws-steps)
+;      (cond
+;        ((var? v)
+;         (cond
+;           ((null? s) (values v s>)) ;; why do we need this?
+;           ((eq? v (lhs (car s)))
+;            (walk-no-rec-stkf-back (rhs (car s)) (cons v m) s> (cdr s)))
+;           (else (walk-no-rec-stkf-back v m s> (cdr s)))))
+;        (else (ret-no-rec-stkf v m s>)))))
 
   ;; same as walk-fb except instead of simply walking backward after the first
   ;; match, it ping-pongs back and forth between the front and back of the list,
@@ -489,42 +493,43 @@
           (else v)))))
 
   ;; same as walk-pinch but uses single-linked reversed list built at run time
-  (define walk-pinch-s
-    (lambda (v s^)
-      (inc-ws-calls s^)
-      (let loop ((s s^) (s< '()))
-        (inc-ws-steps)
-        (cond
-          ((var? v)
-           (cond
-             ((null? s) v) ;; XXX
-             ((eq? s (vector-ref v 0)) v)
-             ((eq? v (rhs (car s))) v)
-             ((eq? v (lhs (car s))) (pinch-s (rhs (car s)) s^ s<))
-             (else (loop (cdr s) (cons (car s) s<)))))
-          (else v)))))
-  (define pinch-s-find
-    (lambda (e s)
-      (cond
-        [(eq? e (car s)) (cdr s)]
-        [else (pinch-s-find e (cdr s))])))
-  (define pinch-s
-    (lambda (v s>^ s<^)
-      (ws-found-match)
-      (let loop ((s> s>^) (s< s<^))
-        (inc-ws-steps)
-        (cond
-          ((null? s<) v)
-          ((var? v)
-           (cond
-             ;; ->
-             ((eq? s> (vector-ref v 0)) v)
-             ((eq? v (rhs (car s>))) v)
-             ((eq? v (lhs (car s>))) (pinch-s (rhs (car s>)) s>^ (pinch-s-find (car s>) s<)))
-             ;; <-
-             ((eq? v (lhs (car s<))) (pinch-s (rhs (car s<)) s>^ (cdr s<)))
-             (else (loop (cdr s>) (cdr s<)))))
-          (else v)))))
+  (include "walk-pinch.scm")
+;  (define walk-pinch-s
+;    (lambda (v s^)
+;      (inc-ws-calls s^)
+;      (let loop ((s s^) (s< '()))
+;        (inc-ws-steps)
+;        (cond
+;          ((var? v)
+;           (cond
+;             ((null? s) v) ;; XXX
+;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? v (rhs (car s))) v)
+;             ((eq? v (lhs (car s))) (pinch-s (rhs (car s)) s^ s<))
+;             (else (loop (cdr s) (cons (car s) s<)))))
+;          (else v)))))
+;  (define pinch-s-find
+;    (lambda (e s)
+;      (cond
+;        [(eq? e (car s)) (cdr s)]
+;        [else (pinch-s-find e (cdr s))])))
+;  (define pinch-s
+;    (lambda (v s>^ s<^)
+;      (ws-found-match)
+;      (let loop ((s> s>^) (s< s<^))
+;        (inc-ws-steps)
+;        (cond
+;          ((null? s<) v)
+;          ((var? v)
+;           (cond
+;             ;; ->
+;             ((eq? s> (vector-ref v 0)) v)
+;             ((eq? v (rhs (car s>))) v)
+;             ((eq? v (lhs (car s>))) (pinch-s (rhs (car s>)) s>^ (pinch-s-find (car s>) s<)))
+;             ;; <-
+;             ((eq? v (lhs (car s<))) (pinch-s (rhs (car s<)) s>^ (cdr s<)))
+;             (else (loop (cdr s>) (cdr s<)))))
+;          (else v)))))
 
   ;; walk using the foldr metaphor
   (define-syntax test-var?!
@@ -871,25 +876,26 @@
           ((eq? v w) s)
           (else (ext-s v w s))))))
 
-  (define unify-sv
-    (lambda (v w s)
-      (let ((v (walk v s))
-            (w (walk w s)))
-        (cond
-          ((eq? v w) s)
-          ((var? v) (ext-s v w s))
-          ;;((var? v) ;; ordering testing
-          ;;(if (and (var? w)
-          ;;(fx< (fxabs (fx- (var-idx w) (cadr s)))
-          ;;(fxabs (fx- (var-idx v) (cadr s)))))
-          ;;(ext-s w v s)
-          ;;(ext-s v w s)))
-          ((var? w) (ext-s w v s))
-          ((and (pair? v) (pair? w))
-           (let ((s (unify-sv (car v) (car w) s)))
-             (and s (unify-sv (cdr v) (cdr w) s))))
-          ((equal? v w) s)
-          (else #f)))))
+  (inlude "unify.scm")
+;  (define unify-sv
+;    (lambda (v w s)
+;      (let ((v (walk v s))
+;            (w (walk w s)))
+;        (cond
+;          ((eq? v w) s)
+;          ((var? v) (ext-s v w s))
+;          ;;((var? v) ;; ordering testing
+;          ;;(if (and (var? w)
+;          ;;(fx< (fxabs (fx- (var-idx w) (cadr s)))
+;          ;;(fxabs (fx- (var-idx v) (cadr s)))))
+;          ;;(ext-s w v s)
+;          ;;(ext-s v w s)))
+;          ((var? w) (ext-s w v s))
+;          ((and (pair? v) (pair? w))
+;           (let ((s (unify-sv (car v) (car w) s)))
+;             (and s (unify-sv (cdr v) (cdr w) s))))
+;          ((equal? v w) s)
+;          (else #f)))))
   (define unify-mv
     (lambda (v w s)
       (let*-values ([(v s^) (walk v s)]
