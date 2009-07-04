@@ -368,7 +368,7 @@
 
   ;; same as walk-fb but builds reverse list on the way forward instead of using
   ;; stack unrolling to walk backward. Doesn't use double-linked list assoc.
-  (include "walk-flatten.scm")
+  (include "walk-reverse-list.scm")
 ;  (define walk-no-rec-stk
 ;    (lambda (v s^)
 ;      (inc-ws-calls s^)
