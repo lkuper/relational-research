@@ -69,7 +69,7 @@
 
 (define-syntax disj*
   (syntax-rules ()
-    ((_ g) (dsij g fail))
+    ((_ g) (disj g fail))
     ((_ g1 g2) (disj g1 g2))
     ((_ g0 g ...) (disj g0 (disj* g ...)))))
 
