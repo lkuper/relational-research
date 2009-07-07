@@ -66,10 +66,10 @@
 (define-syntax case-thread
   (syntax-rules ()
     ((_ e ((a) e1) ((g s) e2))
-     (let ((a e))
+     (let ((t e))
        (cond
-         ((not (and (pair? a) (procedure? (car a)))) e1)
-         (else (let ((g (car a)) (s (cdr a))) e2)))))))
+         ((not (and (pair? t) (procedure? (car t)))) (let ((a t)) e1))
+         (else (let ((g (car t)) (s (cdr t))) e2)))))))
 
 (define succeed  (lambda (s) `(,s))) ;; G also called unit.
 (define fail (lambda (s) '())) ;; G
