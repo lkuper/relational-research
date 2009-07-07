@@ -98,13 +98,13 @@
                        (cons (thread g^ s) (bind (cdr comp) recvr)))))))))
 
 (define trampoline ;; G -> Stream(S)
-  (letrec ((tramp (lambda (tq)
-                    (cond
-                      ((null? tq) '())
-                      (else (case-thread (car tq)
-                              ((s) (cons s (lambda () (tramp (cdr tq)))))
-                              ((g s) (tramp (append (cdr tq) (g s))))))))))
-    (lambda (g) (tramp ((bounce g) empty-s)))))
+  (lambda (g)
+    (let tramp ((tq ((bounce g) empty-s)))
+      (cond
+        ((null? tq) '())
+        (else (case-thread (car tq)
+                ((s) (cons s (lambda () (tramp (cdr tq)))))
+                ((g s) (tramp (append (cdr tq) (g s))))))))))
 
 (define-syntax disj ;; G x G -> G
   (syntax-rules ()
