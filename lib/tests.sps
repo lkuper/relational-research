@@ -1,18 +1,24 @@
-(import (minikanren nominal)
+(import (minikanren tabling)
   (rnrs) (rnrs eval))
 
 (define-syntax define-syntax-when-unbound
   (lambda (o)
-    (define unbound?
-      (let ((empty-ctxt (car (generate-temporaries '(t)))))
+    (define free-identifier-bound?
+      (let ((a:syntax (eval '(a:syntax a:syntax) (environment '(prefix (only (rnrs) syntax) a:))))
+            (b:syntax (eval '(b:syntax b:syntax) (environment '(prefix (only (rnrs) syntax) b:)))))
         (lambda (id)
-          (let ((unbound-id (datum->syntax empty-ctxt (syntax->datum id))))
-            (free-identifier=? id unbound-id)))))
+          (or
+            (free-identifier=? id a:syntax)
+            (free-identifier=? id b:syntax)
+            (let ((sym (syntax->datum id)))
+              (not (or
+                     (free-identifier=? id (datum->syntax a:syntax sym))
+                     (free-identifier=? id (datum->syntax b:syntax sym)))))))))
     (syntax-case o ()
       ((_ id e)
-       (if (unbound? #'id)
-         #'(define-syntax id e)
-         #'(begin))))))
+       (if (free-identifier-bound? #'id)
+         #'(begin)
+         #'(define-syntax id e))))))
 
 (define-syntax define-missing-exports
   (syntax-rules ()
@@ -3150,7 +3156,7 @@ it can be avoided with tabling as long as the argument list doesn't change
   '(((0 . _.0) _.0)
     ((0 0 . _.0) (0 . _.0))))
 
-(mtest "bobo1"
+(mtest "bobo1" (skip "overlapping clauses. subsumed answers.")
   (letrec
     ((b (tabled (i o)
           (conde
@@ -3273,7 +3279,7 @@ it can be avoided with tabling as long as the argument list doesn't change
     ((((((())))))) (((((((()))))))) ((((((((()))))))))
     (((((((((())))))))))))
 
-(mtest "subsumption 1"
+(mtest "subsumption 1" (skip "overlapping clauses. subsumed answers.")
   (letrec
     ((r (tabled (a b o)
           (conde
@@ -3284,7 +3290,7 @@ it can be avoided with tabling as long as the argument list doesn't change
     (run* (z) (exist (x y) (r x y z))))
   '((#t _.0) (#f _.0)))
 
-(mtest "subsumption 2"
+(mtest "subsumption 2" (skip "overlapping clauses. subsumed answers.")
   (letrec
     ((r (tabled (a b o)
           (== o `(,a ,b))

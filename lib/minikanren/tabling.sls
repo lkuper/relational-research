@@ -20,18 +20,11 @@
                          (subunify (car arg) (car ans) s)))
           (else s)))))
 
-  (define subsumed
-    (lambda (arg ans s)
-      (let ((arg (walk arg s))
-            (ans (walk ans s)))
-        (cond
-          ((eq? arg ans) s)
-          ((var? ans) (ext-s-no-check ans arg s)) ; no-check?
-          ((and (pair? arg) (pair? ans))
-           (let ((s (subsumed (car arg) (car ans) s)))
-             (and s (subsumed (cdr arg) (cdr ans) s))))
-          ((equal? arg ans) s)
-          (else #f)))))
+  (define alpha-equiv?
+    (lambda (t1 t2 s)
+      (equal?
+        ((reify reify-name) t1 s)
+        ((reify reify-name) t2 s))))
 
   (define-record-type cache (fields (mutable ansv*)))
   (define-record-type ss (fields cache ansv* f))
@@ -56,7 +49,7 @@
       (lambdag@ (s)
         (and
           (for-all
-            (lambda (ansv) (not (subsumed argv ansv s)))
+            (lambda (ansv) (not (alpha-equiv? argv ansv s)))
             (cache-ansv* cache))
           (begin
             (cache-ansv*-set! cache
