@@ -59,7 +59,7 @@
 
 ;;;;;;;;;;;;;;;;
 
-(load "note-aux.ss")
+(load "note-aux-dfid.ss")
 ;; G = D x S -> List(T)
 ;; T = (D x S) + (G x D x S)
 
