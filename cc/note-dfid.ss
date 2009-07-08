@@ -65,12 +65,12 @@
 
 (define-syntax case-thread
   (syntax-rules ()
-    ((_ e ((d a) e1) ((g d^ s) e2))
+    ((_ e ((d a) e1 ...) ((g d^ s) e2 ...))
      (let ((t e))
        (let ((l (length t)))
          (cond
-           ((= l 3) (let ((g (car t)) (d^ (cadr t)) (s (caddr t))) e2))
-           (else (let ((d (car t)) (a (cadr t))) e1))))))))
+           ((= l 3) (let ((g (car t)) (d^ (cadr t)) (s (caddr t))) (begin e2 ...)))
+           (else (let ((d (car t)) (a (cadr t))) (begin e1 ...)))))))))
 
 (define succeed  (lambda (d s) `((,d ,s)))) ;; G also called unit.
 (define fail (lambda (d s) '())) ;; G
@@ -88,27 +88,12 @@
       (else (case-thread (car comp)
               ((d s) (append (recvr d s) (bind (cdr comp) recvr)))
               ((g d s) (let ((g^ (lambda (d^ s^) (bind (g d^ s^) recvr))))
+              ;((g d s) (let ((g^ (lambda (d^ s^) (bind (recvr d^ s^) g))))
                          (cons (thread g^ d s) (bind (cdr comp) recvr)))))))))
-
-(define trampoline ;; D x G -> Stream(S)
-  (lambda (d g)
-    (letrec ((tramp
-               (lambda (tq)
-                 (cond
-                   ((null? tq) '())
-                   (else
-                     (case-thread (car tq)
-                       ((d^ s) (cons s (lambda () (tramp (cdr tq)))))
-                       ((g d^ s)
-                        (if (> d^ d)
-                          (if (null? (cdr tq))
-                            'depth-limit
-                            (tramp (cdr tq)))
-                          (tramp (append (cdr tq) (g (add1 d^) s)))))))))))
-      (tramp ((bounce g) 0 empty-s)))))
 
 (define-syntax disj ;; G x G -> G
   (syntax-rules ()
+    ;((_ g1 g2) (lambda (d s) (append (g1 d s) (g2 d s))))))
     ((_ g1 g2) (bounce (lambda (d s) (append (g1 d s) (g2 d s)))))))
 
 (define-syntax conj ;; G x G -> G
@@ -117,19 +102,26 @@
 
 (define-syntax run/1 ;; (Num x var x G) -> List(Value)
   (syntax-rules ()
-    ((_ n-exp (x) g)
-     (call/cc (lambda (k)
-       (let ((x (var 'x)))
-         (let iter ((dmax 2))
-           (let take ((n n-exp) (s-inf (trampoline dmax g)) (seenn 0))
-             (cond
-               ((null? s-inf) '())
-               ;((eq? s-inf 'depth-limit) (k (iter (* dmax 2)))) ;; doesn't work
-               ((eq? s-inf 'depth-limit) (iter (* dmax 2))) ;; also doesn't work
-               (else (cons (reify (walk* x (car s-inf)))
-                           (if (and n (= n 1)) '()
-                             (take (and n (- n 1)) ((cdr s-inf))
-                                   (add1 seenn))))))))))))))
+    ((_ n-exp (x) g^^)
+     (let ((m n-exp) (x (var 'x)))
+       (let tramp ((n m) (taken '()) (maxd 2) (tq ((bounce g^^) 0 empty-s)))
+         (cond
+	  ((null? tq) (reverse taken))
+	  (else (case-thread (car tq)
+        	  ((d s)
+;;     	           (printf "~s" '***************************************)
+	           (let ((taken (cons (reify (walk* x s)) taken)))
+		     (if (and n (= n 1)) 
+		       (reverse taken)   
+      		       (tramp (and n (- n 1)) taken maxd (cdr tq)))))
+   	          ((g d s)
+;;   	           (printf "~s" `(,g ,d ,s))
+		   (cond
+		     ;((< d maxd) (tramp n taken maxd (append (cdr tq) (g (add1 d) s))))
+		     ((< d maxd) (tramp n taken maxd (append (g (add1 d) s) (cdr tq))))
+		     ((not (null? (cdr tq))) (tramp n taken maxd (cdr tq)))
+		     (else (begin (printf "~d\n" maxd) (tramp m '() (* 2 maxd) ((bounce g^^) 0 empty-s))))))))))))))
+
 
 ;; == is also in the interface, but code for it is in note-aux.ss
 ;; exist is also in the interface, but code for it is in mktests.scm
@@ -181,7 +173,7 @@
   '())
 
 (test-check (conj (== q 1) (== q 2))
-  (run/1 1 (q) (conj (== q 1) (== q 2)))
+  (run/1 1 (w) (conj (== w 1) (== w 2)))
   '())
 
 (test-check (conj (== q 1) (== q 1))
@@ -282,7 +274,7 @@
      ((cake with ice d) (t))
      ((cake with ice d t) ())))
 
-(test-check append-example-7
+'(test-check append-example-7
   (letrec
     ((appendo (lambda (l s out)
                 (disj
@@ -305,7 +297,7 @@
      ((cake with ice d) (t))
      ((cake with ice d t) ())))
 
-(test-check append-example-7-b
+'(test-check append-example-7-b
   (letrec
     ((appendo (lambda (l s out)
                 (disj
@@ -328,7 +320,7 @@
     ((cake with ice d) (t))
     ((cake with ice d t) ())))
 
-(test-check append-example-7-c
+'(test-check append-example-7-c
   (letrec
     ((appendo (lambda (l s out)
                 (disj
@@ -351,7 +343,7 @@
     ((cake with ice d) (t))
     ((cake with ice d t) ())))
 
-(test-check (conj
+'(test-check (conj
               (letrec ((l (lambda () (disj (l) (l)))))
                 (l))
               (== #t #f))
@@ -362,7 +354,7 @@
       (== #t #f)))
   '())
 
-(test-check variant-b
+'(test-check variant-b
   (run/1 2 (q)
     (conj
       (letrec
@@ -377,7 +369,7 @@
       (== #f #t)))
   '())
 
-(test-check variant-c
+'(test-check variant-c
   (run/1 #f (q)
     (conj
       (letrec ((l (lambda ()
