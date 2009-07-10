@@ -1,65 +1,5 @@
-;; Trampolining:
-;;    (letrec ([foo (lambda () (any (foo) succeed))])
-;;      (all-int foo fail))
-
-;;    yields:
-;;    (letrec ([foo (lambda () (any (bounce (lambda (subst) (foo)) subst)
-;;                                  succeed))])
-;;      (all-int (bounce (lambda (subst) (foo)) subst) fail))
-
-;;    and running
-
-;;    > (trampoline (lambda (subst) (letrec ...)) gives an empty stream.
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; An alternative approach:
-
-;; (strm-car
-;;   (trampoline
-;;      (lambda (subst)
-;;        (letrec ([foo (lambda (subst)
-;;                        (bounce (lambda (subst)
-;;                                  (any foo succeed))
-;;                                subst))])
-;;           (all-int foo fail)))))
-
-;; into
-
-;; (strm-car
-;;   (trampoline
-;;      (lambda (subst)
-;;        (letrec ([foo (lambda (subst)
-;;                        ((bounce (lambda (subst)
-;;                                   (any foo succeed)))
-;;                         subst))])
-;;           (all-int foo fail)))))
-
-;; Which could then be eta'd
-
-;; (strm-car
-;;   (trampoline
-;;      (lambda (subst)
-;;        (letrec ([foo (bounce (lambda (s) (any foo succeed)))])
-;;          (all-int foo fail)))))
-
-;; Then we could define a macro:
-
-;; (define-syntax G
-;;    (syntax-rules ()
-;;      ((_ e) (bounce (lambda (s) e))))) ;; s is never free in e.
-
-;; yielding
-
-;; (strm-car
-;;   (trampoline
-;;     (lambda (subst)
-;;       (letrec ([foo (G (any foo succeed))])
-;;         (all-int foo fail)))))
-
-;;;;;;;;;;;;;;;;
-
 (load "note-aux-dfid.ss")
+
 ;; G = D x S -> List(T)
 ;; T = (D x S) + (G x D x S)
 
@@ -72,8 +12,8 @@
            ((= l 3) (let ((g (car t)) (d^ (cadr t)) (s (caddr t))) (begin e2 ...)))
            (else (let ((d (car t)) (a (cadr t))) (begin e1 ...)))))))))
 
-(define succeed  (lambda (d s) `((,d ,s)))) ;; G also called unit.
-(define fail (lambda (d s) '())) ;; G
+(define succeed  (lambda (d s) `((,d ,s)))) ;; D x S -> T also called unit.
+(define fail (lambda (d s) '())) ;; G (?how is this so?)
 (define thread (lambda (g d s) `(,g ,d ,s))) ;; G x D x S -> T (undone)
 
 (define-syntax bounce ;; G -> List(T))
@@ -87,13 +27,12 @@
       ((null? comp) '())
       (else (case-thread (car comp)
               ((d s) (append (recvr d s) (bind (cdr comp) recvr)))
-              ((g d s) (let ((g^ (lambda (d^ s^) (bind (g d^ s^) recvr))))
               ;((g d s) (let ((g^ (lambda (d^ s^) (bind (recvr d^ s^) g))))
+              ((g d s) (let ((g^ (lambda (d^ s^) (bind (g d^ s^) recvr))))
                          (cons (thread g^ d s) (bind (cdr comp) recvr)))))))))
 
 (define-syntax disj ;; G x G -> G
   (syntax-rules ()
-    ;((_ g1 g2) (lambda (d s) (append (g1 d s) (g2 d s))))))
     ((_ g1 g2) (bounce (lambda (d s) (append (g1 d s) (g2 d s)))))))
 
 (define-syntax conj ;; G x G -> G
@@ -106,21 +45,19 @@
      (let ((m n-exp) (x (var 'x)))
        (let tramp ((n m) (taken '()) (maxd 2) (tq ((bounce g^^) 0 empty-s)))
          (cond
-	  ((null? tq) (reverse taken))
-	  (else (case-thread (car tq)
-        	  ((d s)
-;;     	           (printf "~s" '***************************************)
-	           (let ((taken (cons (reify (walk* x s)) taken)))
-		     (if (and n (= n 1)) 
-		       (reverse taken)   
-      		       (tramp (and n (- n 1)) taken maxd (cdr tq)))))
-   	          ((g d s)
-;;   	           (printf "~s" `(,g ,d ,s))
-		   (cond
-		     ;((< d maxd) (tramp n taken maxd (append (cdr tq) (g (add1 d) s))))
-		     ((< d maxd) (tramp n taken maxd (append (g (add1 d) s) (cdr tq))))
-		     ((not (null? (cdr tq))) (tramp n taken maxd (cdr tq)))
-		     (else (begin (printf "~d\n" maxd) (tramp m '() (* 2 maxd) ((bounce g^^) 0 empty-s))))))))))))))
+           ((null? tq) (reverse taken))
+           (else (case-thread (car tq)
+                   ((d s)
+                    (let ((taken (cons (reify (walk* x s)) taken)))
+                      (if (and n (= n 1)) 
+                        (reverse taken)   
+                        (tramp (and n (- n 1)) taken maxd (cdr tq)))))
+                   ((g d s)
+                    (cond
+                      ;((< d maxd) (tramp n taken maxd (append (cdr tq) (g (add1 d) s))))
+                      ((< d maxd) (tramp n taken maxd (append (g (add1 d) s) (cdr tq))))
+                      ((not (null? (cdr tq))) (tramp n taken maxd (cdr tq)))
+                      (else (begin (printf "~d\n" maxd) (tramp m '() (* 2 maxd) ((bounce g^^) 0 empty-s))))))))))))))
 
 
 ;; == is also in the interface, but code for it is in note-aux.ss
@@ -156,7 +93,7 @@
        ((make-engine (lambda () tested-expression))
         max-ticks
         (lambda (t v)
-	  (error title "infinite loop returned ~s after ~s ticks"
+     (error title "infinite loop returned ~s after ~s ticks"
                  v (- max-ticks t)))
         (lambda (e^) (void))))))) 
 
