@@ -79,14 +79,13 @@
   (syntax-rules ()
     ((_ g-exp) (lambda (s) `(,(thread g-exp s))))))
 
-;; Swap recvr and g in the (g s) line to make it sequentiol.
-(define bind ;; (List(T) x G) -> List(T)
-  (lambda (comp recvr)
-    (map (lambda (t)
-              (case-thread t
-                ((s) (thread recvr s))
-                ((g s) (thread (lambda (s^) (bind (recvr s^) g)) s))))
-      comp)))
+; this is * for the the list monad
+(define star ;; (List(T) x G) -> List(T)
+  (lambda (f)
+    (lambda (l)
+      (cond
+        ((null? l) '())
+        (else (append (f (car l)) ((star f) (cdr l))))))))
 
 (define-syntax disj ;; G x G -> G
   (syntax-rules ()
@@ -94,7 +93,14 @@
 
 (define-syntax conj ;; G x G -> G
   (syntax-rules ()
-    ((_ g1 g2) (bounce (lambda (s) (bind (g1 s) g2))))))
+    ((_ g1 g2) 
+     ;; Swap f and g2^ in the (g s) line to make it sequentiol.
+     (letrec ((f (lambda (g2^)
+                   (lambda (t)
+                     (case-thread t
+                       ((s) `(,(thread g2^ s)))
+                       ((g s) `(,(thread (lambda (s^) ((star (f g)) (g2^ s^))) s))))))))
+       (bounce (lambda (s) ((star (f g2)) (g1 s))))))))
 
 (define-syntax run/1 ;; (Num x var x G) -> List(Value)
   (syntax-rules ()
