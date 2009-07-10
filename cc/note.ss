@@ -82,29 +82,11 @@
 ;; Swap recvr and g in the (g s) line to make it sequentiol.
 (define bind ;; (List(T) x G) -> List(T)
   (lambda (comp recvr)
-    (mapcan (lambda (t)
+    (map (lambda (t)
               (case-thread t
-                ((s) (recvr s))
-                ((g s) ((bounce (lambda (s^) (bind (recvr s^) g))) s))))
+                ((s) (thread recvr s))
+                ((g s) (thread (lambda (s^) (bind (recvr s^) g)) s))))
       comp)))
-
-(define bind ;; (List(T) x G) -> List(T)
-  (lambda (comp recvr)
-    (cond
-      ((null? comp) '())
-      (else (case-thread (car comp)
-              ((s) (append (recvr s) (bind (cdr comp) recvr)))
-              ((g s) (let ((g^ (lambda (s^) (bind (recvr s^) g))))
-                       (cons (thread g^ s) (bind (cdr comp) recvr)))))))))
-
-(define trampoline ;; G -> Stream(S)
-  (lambda (g)
-    (let tramp ((tq ((bounce g) empty-s)))
-      (cond
-        ((null? tq) '())
-        (else (case-thread (car tq)
-                ((s) (cons s (lambda () (tramp (cdr tq)))))
-                ((g s) (tramp (append (cdr tq) (g s))))))))))
 
 (define-syntax disj ;; G x G -> G
   (syntax-rules ()
@@ -116,14 +98,16 @@
 
 (define-syntax run/1 ;; (Num x var x G) -> List(Value)
   (syntax-rules ()
-    ((_ n-exp (x) g)
+    ((_ n-exp (x) g^)
      (let ((x (var 'x)))
-       (let take ((n n-exp) (s-inf (trampoline g)))
+       (let tramp ((n n-exp) (tq ((bounce g^) empty-s)))
          (cond
-           ((null? s-inf) '())
-           (else (cons (reify (walk* x (car s-inf)))
-                   (if (and n (= n 1)) '()
-                     (take (and n (- n 1)) ((cdr s-inf))))))))))))
+           ((null? tq) '())
+           (else (case-thread (car tq)
+                   ((s) (cons (reify (walk* x s))
+                              (if (and n (= n 1)) '()
+                                (tramp (and n (- n 1)) (cdr tq)))))
+                   ((g s) (tramp n (append (cdr tq) (g s))))))))))))
 
 ;; == is also in the interface, but code for it is in note-aux.ss
 ;; exist is also in the interface, but code for it is in mktests.scm
