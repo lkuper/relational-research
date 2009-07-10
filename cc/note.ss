@@ -98,8 +98,9 @@
      (letrec ((f (lambda (g2^)
                    (lambda (t)
                      (case-thread t
-                       ((s) `(,(thread g2^ s)))
-                       ((g s) `(,(thread (lambda (s^) ((star (f g)) (g2^ s^))) s))))))))
+                       ((s) ((bounce g2^) s))
+                       ((g s) ((bounce (lambda (s^)
+                                         ((star (f g)) (g2^ s^)))) s)))))))
        (bounce (lambda (s) ((star (f g2)) (g1 s))))))))
 
 (define-syntax run/1 ;; (Num x var x G) -> List(Value)
