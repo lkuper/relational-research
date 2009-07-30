@@ -42,6 +42,16 @@
      [(eq? (caar al) 8) (unit (car al))]
      [else (bind (assq8 (cdr al)) (lambda (v) (unit v)))])))
 
+;; Actually, we can eta out the (lambda (v) --), and because binding
+;; anything with unit just results in that thing, the last line is
+;; suddenly a lot simpler.
+(define assq8
+ (lambda (al)
+   (cond
+     [(null? al) (fail)]
+     [(eq? (caar al) 8) (unit (car al))]
+     [else (assq8 (cdr al))])))
+
 (define assq*
   (lambda (v l)
     (cond
