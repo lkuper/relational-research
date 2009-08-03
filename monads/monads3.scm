@@ -124,7 +124,7 @@
 
 (define throw
   (lambda (exception)
-    `(LEFT . ,exception)))
+    `(left . ,exception)))
 
 (define catch
   (lambda (c handler)
@@ -172,20 +172,20 @@
 ;;   where printError e
 ;;   = return $ "At index " ++ (show (location e)) ++ ":" ++ (reason e)
 
-(define convert ;; String -> String
-  (let ((print (lambda (e)
-                 (let ((position (car e)) (reason (cdr e)))
-                   (unit
-                     (string-append (format "At index ~s : " position) reason))))))
+(define run ;; Hex-String -> (Error-String U Decimal-Integer)
+  (let ((e-string (lambda (e)
+                    (let ((position (car e)) (reason (cdr e)))
+                      (unit
+                        (string-append (format "At index ~s : " position) reason))))))
     (lambda (shex)
       (let ((result (catch
                       (do* ((n (parse-hex shex)))
-                        (unit (format "~s" n)))
-                      print)))
+                        (unit n))
+                      e-string)))
         (case (car result)
           ((right) (cdr result)))))))
 
-> (convert "a5x21b")
+> (run "a5f21b")
+10875419
+> (run "a5x21b")
 "At index 2 : bad char x"
-> (convert "a5f21b")
-"10875419"
