@@ -1,3 +1,5 @@
+; FIXME: right now, must use full path because this gets loaded by a file in
+;        another directory. Is there a better way?
 (load "~/repos/iucs-relational-research/subst/lib/pmatch.scm")
 
 ;; scrub-code: strips statistics-gathering code, extraneous begins,
@@ -18,13 +20,7 @@
       [,otherwise (cons (scrub-code (car expr))
                         (scrub-code (cdr expr)))])))
 
-(let* ([filename (cadr (command-line))]
-       [input-file (string-append "~/repos/iucs-relational-research/subst/"
-                                  filename)]
-       [output-file (string-append "scrubbed-code/" filename)]
+(let* ([input-file (cadr (command-line))]
        [p (open-input-file input-file)]
        [code (read p)])
-  (with-output-to-file output-file
-    (lambda ()
-      (pretty-print (scrub-code code)))
-    'replace))
+  (pretty-print (scrub-code code)))
