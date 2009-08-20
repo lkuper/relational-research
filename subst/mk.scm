@@ -84,6 +84,11 @@
     (lambda (x)
       (vector-ref x 1)))
 
+  (define var-value
+    (lambda (x)
+      (vector-ref x 0)))
+
+
   (define-syntax var?
     (syntax-rules ()
       ((_ x) (vector? x))))
@@ -183,7 +188,7 @@
 ;          ((var? v)
 ;           (cond
 ;             ((null? s) v) ;; XXX
-;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? s (var-value v)) v)
 ;             ((eq? v (rhs (car s))) v)
 ;             ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
 ;             (else (loop (cdr s)))))
@@ -200,7 +205,7 @@
           ((var? v)
            (cond
              ((null? s) (values v s^)) ;; XXX
-             ((eq? s (vector-ref v 0)) (values v s^))
+             ((eq? s (var-value v)) (values v s^))
              ((eq? v (rhs (car s))) (values v s^))
              ((eq? v (lhs (car s))) (step-sreff (rhs (car s)) `(,v) s^))
              (else (loop (cdr s)))))
@@ -248,7 +253,7 @@
           ((null? s) v)
           ((var? v)
            (cond
-             ((eq? s (vector-ref v 0)) v)
+             ((eq? s (var-value v)) v)
              ((eq? v (rhs (car s))) v)
              ((eq? v (lhs (car s))) (safe-step (rhs (car s)) s^))
              (else (loop (cdr s)))))
@@ -275,7 +280,7 @@
     (lambda (v s)
       (cond
         ((var? v)
-         (let ((a (bst:lookup (vector-ref v 1) s)))
+         (let ((a (bst:lookup (var-idx v) s)))
            (cond
              ((not (eq? a 'DE)) (walk-bst a s))
              (else v))))
@@ -327,7 +332,7 @@
 ;             ((var? v)
 ;              (cond
 ;                ((null? s) v) ;; XXX
-;                ((eq? s (vector-ref v 0)) (k v))
+;                ((eq? s (var-value v)) (k v))
 ;                ((eq? v (rhs (car s))) (k v))
 ;                ((eq? v (lhs (car s))) (rhs (car s)))
 ;                (else
@@ -358,7 +363,7 @@
                          (else fk))))))
              (T^ t
                  ((null? s) ;; XXX
-                  (eq? s (vector-ref t 0))
+                  (eq? s (var-value t))
                   (and (var? (cdar s))
                        (eq? (cdar s) t)))
                  (let ((t (rec (cdr s))))
@@ -378,7 +383,7 @@
 ;          ((var? v)
 ;           (cond
 ;             ((null? s) v) ;; XXX
-;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? s (var-value v)) v)
 ;             ((eq? v (rhs (car s))) v)
 ;             ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) s<))
 ;             ;;((eq? v (lhs (car s))) (if (null? s<) (rhs (car s)) (walk-no-rec-stk-back (rhs (car s)) s<)))
@@ -407,7 +412,7 @@
 ;          ((var? v)
 ;           (cond
 ;             ((null? s) (values v s^)) ;; XXX
-;             ((eq? s (vector-ref v 0)) (values v s^))
+;             ((eq? s (var-value v)) (values v s^))
 ;             ((eq? v (rhs (car s))) (values v s^))
 ;             ((eq? v (lhs (car s))) (walk-no-rec-stkf-back (rhs (car s)) `(,v) s^ s<))
 ;             (else (loop (cdr s) (cons (car s) s<)))))
@@ -449,7 +454,7 @@
           ((var? v)
            (cond
              ((null? s) v) ;; XXX
-             ((eq? s (vector-ref v 0)) v)
+             ((eq? s (var-value v)) v)
              ((eq? v (rhs (caar s))) v)
              ((eq? v (lhs (caar s))) (pinch (rhs (caar s)) s^ (cdar s)))
              (else (begin
@@ -467,7 +472,7 @@
           ((var? v)
            (cond
              ;; ->
-             ((eq? s> (vector-ref v 0)) v)
+             ((eq? s> (var-value v)) v)
              ((eq? v (rhs (caar s>))) v)
              ((eq? v (lhs (caar s>))) (pinch (rhs (caar s>)) s>^ (cdar s>)))
              ;; <-
@@ -485,7 +490,7 @@
           ((var? v)
            (cond
              ((null? s) v)
-             ((eq? s (vector-ref v 0)) v)
+             ((eq? s (var-value v)) v)
              ((eq? v (rhs (caar s))) v)
              ((eq? v (lhs (caar s))) (begin (inc-ws-safe-recrs)
                                             (safe-walk-pinch (rhs (caar s)) s^)))
@@ -503,7 +508,7 @@
 ;          ((var? v)
 ;           (cond
 ;             ((null? s) v) ;; XXX
-;             ((eq? s (vector-ref v 0)) v)
+;             ((eq? s (var-value v)) v)
 ;             ((eq? v (rhs (car s))) v)
 ;             ((eq? v (lhs (car s))) (pinch-s (rhs (car s)) s^ s<))
 ;             (else (loop (cdr s) (cons (car s) s<)))))
@@ -523,7 +528,7 @@
 ;          ((var? v)
 ;           (cond
 ;             ;; ->
-;             ((eq? s> (vector-ref v 0)) v)
+;             ((eq? s> (var-value v)) v)
 ;             ((eq? v (rhs (car s>))) v)
 ;             ((eq? v (lhs (car s>))) (pinch-s (rhs (car s>)) s>^ (pinch-s-find (car s>) s<)))
 ;             ;; <-
@@ -539,7 +544,7 @@
   (define foldr/k
     (lambda (init ls exit) ;; ls^ could be passed in from walk, see below comments.
       (cond
-        ((null? ls) (exit init))  ;; (eq? ls^ ls), which could be via else clause (fold/k (vector-ref v 0) v s exit) from walk.
+        ((null? ls) (exit init))  ;; (eq? ls^ ls), which could be via else clause (fold/k (var-value v) v s exit) from walk.
         (else
          (let ((a (car ls)))
            (inc-ws-steps)
@@ -571,7 +576,7 @@
       (t:bind (var-idx x) v s)))
   (define ext-s-bst
     (lambda (x v s)
-      (bst:ext (vector-ref x 1) v s)))
+      (bst:ext (var-idx x) v s)))
   (define ext-s-skew
     (lambda (x v s)
       (k:update (var-idx x) v s)))

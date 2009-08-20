@@ -1,7 +1,7 @@
   (define unify-sv
-    (lambda (v w s)
-      (let ((v (walk v s))
-            (w (walk w s)))
+    (lambda (v^ w^ s)
+      (let ((v (walk v^ s))
+            (w (walk w^ s)))
         (cond
           ((eq? v w) s)
           ((var? v) (ext-s v w s))

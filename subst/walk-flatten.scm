@@ -7,7 +7,7 @@
           ((var? v)
            (cond
              ((null? s) (values v s^)) ;; XXX
-             ((eq? s (vector-ref v 0)) (values v s^))
+             ((eq? s (var-value v)) (values v s^))
              ((eq? v (rhs (car s))) (values v s^))
              ((eq? v (lhs (car s))) (walk-no-rec-stkf-back (rhs (car s)) `(,v) s^ s<))
              (else (loop (cdr s) (cons (car s) s<)))))

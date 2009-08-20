@@ -7,7 +7,7 @@
           ((var? v)
            (cond
              ((null? s) v) ;; XXX
-             ((eq? s (vector-ref v 0)) v)
+             ((eq? s (var-value v)) v)
              ((eq? v (rhs (car s))) v)
              ((eq? v (lhs (car s))) (pinch-s (rhs (car s)) s^ s<))
              (else (loop (cdr s) (cons (car s) s<)))))
@@ -27,7 +27,7 @@
           ((var? v)
            (cond
              ;; ->
-             ((eq? s> (vector-ref v 0)) v)
+             ((eq? s> (var-value v)) v)
              ((eq? v (rhs (car s>))) v)
              ((eq? v (lhs (car s>))) (pinch-s (rhs (car s>)) s>^ (pinch-s-find (car s>) s<)))
              ;; <-

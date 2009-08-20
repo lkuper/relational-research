@@ -152,7 +152,7 @@
           [else (let* ([x (any varl)]
                        [v (any (append born vall))]
                        [born^ (if (memq x born) born (cons x born))]
-                       [origx (vector-ref x 0)]
+                       [origx (var-value x)]
                        [s^ (unify-safe x v s)])
                   (cond
                     [s^ (begin
