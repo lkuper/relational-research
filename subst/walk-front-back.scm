@@ -9,7 +9,7 @@
              ((var? v)
               (cond
                 ((null? s) v) ;; XXX
-                ((eq? s (var-value v)) (k v))
+                ((eq? s (var-birth v)) (k v))
                 ((eq? v (rhs (car s))) (k v))
                 ((eq? v (lhs (car s))) (rhs (car s)))
                 (else

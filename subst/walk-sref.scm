@@ -1,4 +1,4 @@
-  (define var-value
+  (define var-birth
     (lambda (x)
       (vector-ref x 0)))
   (define walk-sref
@@ -10,7 +10,7 @@
           ((var? v)
            (cond
              ((null? s) v) ;; XXX
-             ((eq? s (var-value v)) v)
+             ((eq? s (var-birth v)) v)
              ((eq? v (rhs (car s))) v)
              ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
              (else (loop (cdr s)))))

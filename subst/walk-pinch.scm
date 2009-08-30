@@ -7,7 +7,7 @@
           ((var? v)
            (cond
              ((null? s) v) ;; XXX
-             ((eq? s (var-value v)) v)
+             ((eq? s (var-birth v)) v)
              ((eq? v (rhs (car s))) v)
              ((eq? v (lhs (car s))) (pinch-s (rhs (car s)) s^ s<))
              (else (loop (cdr s) (cons (car s) s<)))))
