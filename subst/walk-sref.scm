@@ -8,9 +8,11 @@
     (let loop ((s s^))
       (inc-ws-steps)
       (cond
-        ((or (not (var? v)) (null? s)) v) ;; XXX
-        ((eq? s (var-birth v)) v)
-        ((eq? v (rhs (car s))) v)
+        ((or (not (var? v))
+             (null? s)
+             (eq? s (var-birth v))
+             (eq? v (rhs (car s))))
+         v) 
         ((eq? v (lhs (car s))) (step (rhs (car s)) s^))
         (else (loop (cdr s)))))))
 
