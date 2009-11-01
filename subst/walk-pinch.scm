@@ -26,7 +26,7 @@
         ((or (not (var? v))
              (null? s<)
              ;; ->
-             (eq? s> (var-value v))
+             (eq? s> (var-birth v))
              (eq? v (rhs (car s>)))) v)
         ((eq? v (lhs (car s>)))
          (pinch-s (rhs (car s>)) s>^ (pinch-s-find (car s>) s<)))

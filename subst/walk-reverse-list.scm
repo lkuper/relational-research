@@ -16,6 +16,6 @@
     (ws-found-match)
     (inc-ws-steps)
     (cond
-      ((or (not (var? v) (null? s))) v)
+      ((or (not (var? v)) (null? s)) v)
       ((eq? v (lhs (car s))) (walk-no-rec-stk-back (rhs (car s)) (cdr s)))
       (else (walk-no-rec-stk-back v (cdr s))))))
