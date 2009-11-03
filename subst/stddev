@@ -2,7 +2,8 @@
 
 import sys, math
 class trials:
-   def __init__(self):
+   def __init__(self, algnm):
+      self.algnm = algnm
       self.sn = 0.
       self.snsq = 0.
       self.d = []
@@ -20,22 +21,50 @@ class trials:
    def get_stats(self):
       return (self.avg, stddev)
    def __repr__(self):
-      return "(%3.1f, %3.1f)" % (self.avg, self.stddev)
+      return "('%s', %3.1f, %3.1f)" % (self.algnm, self.avg, self.stddev)
+# get graph number
+gnum = int(sys.argv[1])
+# convert test names and markup for latex
+def filternames(x):
+   if x=='walk-basic': x='walk'
+   elif x=='walk-no-rec-stkf': x='walk-flatten'
+   elif x=='walk-fb': x='walk-front-back'
+   elif x=='walk-no-rec-stk': x='walk-reverse-list'
+   elif x=='walk-pinch-s': x='walk-pinch'
+   return x
 # read in data from all trials
 data = {}
-for afile in sys.argv[1:]:
+for afile in sys.argv[2:]:
    for line in file(afile):
       fields = line.strip().split()
-      if fields[0] in ("walk-assq","walk-rhs","walk-fb","walk-step","walk-sref"):
+      nm = fields[0]
+      if nm in ("walk-assq","walk-rhs","walk-fb-opt","walk-step","walk-sreff","walk-no-rec-stk"):
          continue
-      values = data.setdefault(fields[0], [trials() for x in fields[1:]])
+      nm = filternames(nm)
+      values = data.setdefault(nm, [trials(nm) for x in fields[1:]])
       for i,v in enumerate(fields[1:]):
          values[i].add(float(v))
 # output in python source code format suitable for matplotlib
 test_order = ["mktests", "logo", "permo", "appendo", "wc-assoc-mk", "wc-assoc", 
               "rand-assoc", "leantap", "zebra"]
-idx = test_order.index("wc-assoc-mk")
-print "tests =", test_order[:idx]+test_order[idx+1:]
+# convert test names and markup for latex
+def markup(x):
+   if x=='wc-assoc': x='worst-case'
+   elif x=='rand-assoc': x='random'
+   if x.endswith('o'):
+      return '"$%s$"' % (x[:-1]+'^o')
+   else:
+      return '"$%s$"' % x
 for i,t in enumerate(test_order):
    if t != "wc-assoc-mk": # not used
-      print t, '=', sorted([trials[i] for trials in data.values()], key=lambda x: x.avg)
+      print t.replace('-','_'), '=', sorted([trials[i] for trials in data.values()], key=lambda x: x.avg)
+idx = test_order.index("wc-assoc-mk")
+tests_used = test_order[:idx]+test_order[idx+1:]
+if gnum==1:
+   for t in ('wc-assoc','rand-assoc'):
+      tests_used.remove(t)
+else:
+   for t in ('mktests','logo','permo','appendo','leantap','zebra'):
+      tests_used.remove(t)
+print "test_names =", '[%s]' % ', '.join([markup(x) for x in tests_used])
+print "tests =", '[%s]' % ', '.join([x.replace('-','_') for x in tests_used])

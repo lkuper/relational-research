@@ -4,7 +4,7 @@
 
   (define run-all-walktests
     (lambda ()
-      (define long-tests #t)
+      (define long-tests #f)
       (printf "WALK ~a\n" name)
 
       ; tests

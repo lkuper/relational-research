@@ -43,7 +43,7 @@ timeit:
 #$(SCHEME) --script timeit.scm >> $(OUTPUT) 2>&1
 
 quick:
-	cp settings/skew-def-settings.scm settings.scm
+	cp settings/sref-settings.scm settings.scm
 	$(SCHEME) --script timeit.scm > quick.raw 2>&1
 	./process_res quick.raw | tee quick.final
 

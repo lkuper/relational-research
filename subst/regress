@@ -3,4 +3,5 @@ for i in $(seq 10)
 do
   make FINAL=run$i.stat PRETTY=0
 done
-./stddev run*.stat > final.stat
+./stddev 1 run*.stat > graph_input1.py
+./stddev 2 run*.stat > graph_input2.py
