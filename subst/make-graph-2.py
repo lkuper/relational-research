@@ -11,7 +11,7 @@ ind=np.arange(M)
 w=.7
 
 #wid_adj = [1500,0,200,900,1200,200]
-wid_adj = [1000,0]
+wid_adj = [1000,200]
 
 def mkplot(n):
    f = plt.subplot(211+n)
