@@ -53,7 +53,7 @@
        ;(printf "Pelletier Problem ~s:\n" n)
 ;       (printf "-----------------------------------\n")
        ;(time (loop 100 (do-prove-th axioms theorem))))))) -DCB
-       (loop 10 (do-prove-th axioms theorem))))))
+       (loop 2 (do-prove-th axioms theorem))))))
 ;; Pelletier Problems
 
 (define test-short

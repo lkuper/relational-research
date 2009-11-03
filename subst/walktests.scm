@@ -4,7 +4,7 @@
 
   (define run-all-walktests
     (lambda ()
-      (define long-tests #f)
+      (define long-tests #t)
       (printf "WALK ~a\n" name)
 
       ; tests
@@ -21,7 +21,7 @@
 
       (printf "TEST wc-assoc\n")
       (clear-ws)
-      (let [(n (if long-tests 30000 300))]
+      (let [(n (if long-tests 60000 300))]
         (let [(r (build-wc-s n))]
           (time
             (walk (car r) (cdr r)))))
@@ -39,7 +39,7 @@
 
       (printf "TEST permo\n")
       (clear-ws)
-      (let [(n (if long-tests 8 9))]
+      (let [(n (if long-tests 7 5))]
         (time
           (let loop ((i 1))
             (cond
@@ -61,7 +61,7 @@
 
       (printf "TEST appendo\n")
       (clear-ws)
-      (let [(n (if long-tests 1200 50))]
+      (let [(n (if long-tests 700 50))]
         (time
           (run n (x)
             (exist (y z)

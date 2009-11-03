@@ -2,18 +2,27 @@
 
 import sys, os
 res = {}
+mem = {}
 stats = {}
+pretty = True
+if len(sys.argv) > 2:
+  pretty = bool(int(sys.argv[2]))
+
+# read result file
 for line in file(sys.argv[1]):
   line = line.strip()
   if line.startswith("WALK"):
     cur = line.split()[1]
     res[cur] = {}
+    mem[cur] = {}
     stats[cur] = {}
   else:
     if "TEST" in line:
       curtest = line.split()[1]
     elif "ms elapsed cpu time" in line:
       res[cur][curtest] = int(line.split()[0])
+    elif "bytes allocated" in line:
+      mem[cur][curtest] = int(line.split()[0])
     elif "avg-steps-per-call" in line:
       d = stats[cur].setdefault(curtest, {})
       d['avg-steps-per-call'] = float(line.split(':')[1])
@@ -36,6 +45,7 @@ for line in file(sys.argv[1]):
       d = stats[cur].setdefault(curtest, {})
       d['avg-len'] = float(line.split(':')[1])
 
+# order results
 test_order = ["mktests", "logo", "permo", "appendo", "wc-assoc-mk", "wc-assoc", 
               "rand-assoc", "leantap", "zebra"]
 t = test_order[0]
@@ -54,40 +64,62 @@ best_score = {}
 while res:
   alg_nm = reduce(pick_best, res.keys())
   alg_res = res.pop(alg_nm)
+  alg_mem = mem.pop(alg_nm)
   lst = [alg_nm]
   if len(alg_nm) > col_wid[0]:
     col_wid[0] = len(alg_nm)
-  for i,test in enumerate(test_order):
+  for i,test in enumerate(res_lst[0]):
     if test in alg_res:
       a = alg_res[test]
-      a_str = "%d" % alg_res[test]
-      if len(a_str) > col_wid[i]:
-        col_wid[i] = len(a_str)
-      lst.append(a)
+      m = '%3.1f' % (alg_mem[test]/1e6) # convert to MB
+      maxl = max(len('%d'%a), len(m))
+      if maxl > col_wid[i]:
+        col_wid[i] = maxl
+      a_m = (a, m)
+      lst.append(a_m)
       bs = best_score.setdefault(test, a)
       if bs >= a:
         best_score[test] = a
-    else:
+    elif test != 'algorithm':
       lst.append("-")
   res_lst.append(lst)
 
+# print out results
 for r,row in enumerate(res_lst):
+  if not pretty and r==0:
+    continue
   if r>0: tot=0.
   for i,l in enumerate(col_wid):
-    if i>0 and best_score[test_order[i-1]]==row[i]:
-      print ("*%s" % row[i]).rjust(l),
+    if isinstance(row[i],tuple):
+      rowi = row[i][0]
     else:
-      print ("%s" % row[i]).rjust(l),
+      rowi = row[i]
+    if i>0 and best_score[test_order[i-1]]==rowi and pretty:
+      print ("*%s" % rowi).rjust(l),
+    else:
+      print ("%s" % rowi).rjust(l),
     if r>0 and i>0 and best_score[test_order[i-1]]>0:
-      tot += row[i]/float(best_score[test_order[i-1]])
-  if r>0: print " (%3.2f)" % (tot/(len(row)-1))
+      tot += row[i][0]/float(best_score[test_order[i-1]])
+  if r>0 and pretty: print " (%3.2f)" % (tot/(len(row)-1))
   else: print
-  if r==0: # print underlines
+  if r==0:
+    # print underlines
     for i,l in enumerate(col_wid):
       print ('-'*l).ljust(l),
     print
+  else:
+    # print memory stats
+    if pretty:
+      print "(MB alloc)".rjust(col_wid[0]),
+      for i,l in enumerate(col_wid):
+        if isinstance(row[i],tuple):
+          print row[i][1].rjust(l),
+      print
+    #else:
+      #print row[0].rjust(col_wid[0]),
 
 sys.exit()
+# old stuff to print various substitution-related stats 
 print "\nalgorithm               avg-s/c   avg-r/c reify-avg-s/c reify-avg-r/c    avg-len avg-%-walked avg-steps-to-first-match"
 print '-'*(col_wid[0]+8), " -----------", "---------", "-------------", "-------------", "----------", "------------", "------------------------"
 w = col_wid[0]

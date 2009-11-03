@@ -32,7 +32,7 @@
       (let [(n (bral-size b))]
         (set-bral-size! b (fx+ 1 n))
         n)))
-      ;(make-bral (fx+ 1 (bral-size b))
+      ;(make-bral (fx+ 1 (bral-size b))  ; purely functional
                  ;(bral-realized b)
                  ;(bral-ls b))))
 
@@ -42,8 +42,6 @@
 
   (define kd:associate
     (lambda (i v b)
-      ;(unless (fx< i (bral-size b))
-        ;(error 'k:associate "index ~s beyond size" i))
       (if (fx> i (bral-realized b))
         (make-bral (bral-size b) i
                    (cons^ v (bral-ls b) (fx- i (bral-realized b))))
@@ -72,8 +70,6 @@
 
   (define reverse-idx
     (lambda (i b)
-      ;(unless (fx>= (bral-realized b) 0)
-      ;  (error 'reverse-idx "empty list"))
       (fx- (bral-realized b) i)))
 
   (define shift (lambda (n) (fxsra n 1)))

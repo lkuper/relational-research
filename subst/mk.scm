@@ -12,7 +12,7 @@
     unify-var-sv unify-var-mv unify-check-sv unify-check-mv unify-sv unify-mv
     ext-s-sl ext-s-dl ext-s-t ext-s-bst ext-s-skew-init ext-s-skew ext-s-kd
     ext-s-init size-s
-    run* rhs lhs var-1 var-2 var-2-skew var-2-skew-def var-bst var var?
+    run* rhs lhs var-1 var-2 var-2-skew var-2-skew-def var-bst var var? var-birth
     empty-s ext-s-check occurs-check
     walk* reify-s reify-name reify ==-check mzero inc unit choice
     case-inf run take == bind* bind unify ==/var empty-s-l

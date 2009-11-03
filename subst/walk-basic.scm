@@ -1,10 +1,3 @@
-(define-syntax rhs
-  (syntax-rules ()
-    ((_ x) (cdr x))))
-(define-syntax lhs
-  (syntax-rules ()
-    ((_ x) (car x))))
-
 (define walk-basic
   (lambda (v s^)
     (inc-ws-calls s^)

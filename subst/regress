@@ -1,0 +1,6 @@
+#!/bin/sh
+for i in $(seq 10)
+do
+  make FINAL=run$i.stat PRETTY=0
+done
+./stddev run*.stat > final.stat

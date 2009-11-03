@@ -1,7 +1,3 @@
-(define var-birth
-  (lambda (x)
-    (vector-ref x 0)))
-
 (define walk-sref
   (lambda (v s^)
     (inc-ws-calls s^)

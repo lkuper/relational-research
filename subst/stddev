@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+
+import sys, math
+class trials:
+   def __init__(self):
+      self.sn = 0.
+      self.snsq = 0.
+      self.d = []
+      self.avg = 0.
+      self.stddev = 0.
+   def add(self, v):
+      self.sn += v
+      self.snsq += v**2
+      self.d.append(v)
+      self.update_stats()
+   def update_stats(self):
+      n = float(len(self.d))
+      self.stddev = math.sqrt((self.snsq - (self.sn**2/n))/n)
+      self.avg = self.sn/n
+   def get_stats(self):
+      return (self.avg, stddev)
+   def __repr__(self):
+      return "(%3.1f, %3.1f)" % (self.avg, self.stddev)
+# read in data from all trials
+data = {}
+for afile in sys.argv[1:]:
+   for line in file(afile):
+      fields = line.strip().split()
+      if fields[0] in ("walk-assq","walk-rhs","walk-fb","walk-step","walk-sref"):
+         continue
+      values = data.setdefault(fields[0], [trials() for x in fields[1:]])
+      for i,v in enumerate(fields[1:]):
+         values[i].add(float(v))
+# output in python source code format suitable for matplotlib
+test_order = ["mktests", "logo", "permo", "appendo", "wc-assoc-mk", "wc-assoc", 
+              "rand-assoc", "leantap", "zebra"]
+idx = test_order.index("wc-assoc-mk")
+print "tests =", test_order[:idx]+test_order[idx+1:]
+for i,t in enumerate(test_order):
+   if t != "wc-assoc-mk": # not used
+      print t, '=', sorted([trials[i] for trials in data.values()], key=lambda x: x.avg)

@@ -1,5 +1,5 @@
 import sys
-n=3000
+n=1000
 s=sys.stdout
 s.write("(import (mk))\n(run 1 (q)\n  (exist (")
 for i in range(n):
