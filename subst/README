@@ -8,5 +8,4 @@ full version.
 mk-scratch.scm has the minimal changes needed to embed the deferred extension 
 skew binary version.
 
-The code runs only in chez, though it would be relatively straightforward to
-convert it to r6rs (I kept an r6rs version in sync for a while).
+The code has been tested in Chez Scheme Version 7.4d.
