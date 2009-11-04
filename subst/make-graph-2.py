@@ -32,5 +32,5 @@ plt.figure(figsize=(6,6))
 for i in range(N):
    mkplot(i)
 plt.subplots_adjust(left=.20, hspace=.5, wspace=.2)
-#plt.show()
+plt.show()
 plt.savefig("graph2.png")

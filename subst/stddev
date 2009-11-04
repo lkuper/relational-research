@@ -31,6 +31,10 @@ def filternames(x):
    elif x=='walk-fb': x='walk-front-back'
    elif x=='walk-no-rec-stk': x='walk-reverse-list'
    elif x=='walk-pinch-s': x='walk-pinch'
+   elif x=='walk-bst': x='bst'
+   elif x=='walk-trie': x='trie'
+   elif x=='walk-sbral': x='sbral'
+   elif x=='walk-sbral-def': x='desbral'
    return x
 # read in data from all trials
 data = {}
