@@ -29,12 +29,12 @@ def filternames(x):
    if x=='walk-basic': x='walk'
    elif x=='walk-no-rec-stkf': x='walk-flatten'
    elif x=='walk-fb': x='walk-front-back'
-   elif x=='walk-no-rec-stk': x='walk-reverse-list'
+   elif x=='walk-no-rec-stk': x='walk-reverse'
    elif x=='walk-pinch-s': x='walk-pinch'
-   elif x=='walk-bst': x='bst'
-   elif x=='walk-trie': x='trie'
-   elif x=='walk-sbral': x='sbral'
-   elif x=='walk-sbral-def': x='desbral'
+   elif x=='walk-bst': x='BST'
+   elif x=='walk-trie': x='Prefix tree'
+   elif x=='walk-skew': x='SBRAL'
+   elif x=='walk-skew-def': x='DESBRAL'
    return x
 # read in data from all trials
 data = {}
@@ -42,7 +42,7 @@ for afile in sys.argv[2:]:
    for line in file(afile):
       fields = line.strip().split()
       nm = fields[0]
-      if nm in ("walk-assq","walk-rhs","walk-fb-opt","walk-step","walk-sreff","walk-no-rec-stk"):
+      if nm in ("walk-assq","walk-rhs","walk-fb-opt","walk-step","walk-sreff","walk-pinch"):
          continue
       nm = filternames(nm)
       values = data.setdefault(nm, [trials(nm) for x in fields[1:]])
@@ -68,7 +68,8 @@ if gnum==1:
    for t in ('wc-assoc','rand-assoc'):
       tests_used.remove(t)
 else:
-   for t in ('mktests','logo','permo','appendo','leantap','zebra'):
+   #for t in ('mktests','logo','permo','appendo','leantap','zebra'):
+   for t in ('rand-assoc','mktests','logo','permo','appendo','leantap','zebra'):
       tests_used.remove(t)
 print "test_names =", '[%s]' % ', '.join([markup(x) for x in tests_used])
 print "tests =", '[%s]' % ', '.join([x.replace('-','_') for x in tests_used])

@@ -42,5 +42,5 @@ for i in range(N):
    mkplot(i)
 plt.subplots_adjust(hspace=.5, wspace=.1, bottom=.16)
 plt.legend([x[0] for x in tests[-1]], loc=8, bbox_to_anchor=(-.05,-.7), ncol=M/2, prop={'size':11})
-#plt.show()
+plt.show()
 pylab.savefig("graph1.png")

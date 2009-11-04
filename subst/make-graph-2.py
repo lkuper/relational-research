@@ -41,5 +41,5 @@ for i in range(N):
 plt.subplots_adjust(hspace=.5, wspace=.1, bottom=.36)
 #plt.legend([x[0] for x in tests[-1]], loc=8, bbox_to_anchor=(-.05,-.5), ncol=M/2, prop={'size':11})
 plt.legend([x[0] for x in tests[-1]], loc=8, bbox_to_anchor=(.5,-.5), ncol=M/2, prop={'size':11})
-plt.show()
+#plt.show()
 plt.savefig("graph2.png")
